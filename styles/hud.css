@@ -38,6 +38,39 @@
 /* Item na mão: segunda tira de fita crepe, torta para o outro lado. */
 .hud-held { font: 700 0.8rem / 1.2 var(--font-mono); transform: rotate(0.8deg); }
 
+/* Vida e colete: terceira tira; ao tomar dano o texto pisca em vermelho de pose em pose (stop-motion). */
+.hud-vitals { font: 700 0.8rem / 1.2 var(--font-mono); transform: rotate(-0.6deg); }
+.hud-vitals.is-hit { animation: vitals-hit calc(var(--pose) * 2) steps(1) 5; }
+
+@keyframes vitals-hit {
+  0% { color: var(--tr-red); }
+  50% { color: var(--ink); }
+}
+
+/* Quanto a vida perdeu, ao lado da etiqueta (some sozinho). */
+.hud-hurt { font: 800 0.95rem var(--font-mono); color: var(--alert); text-shadow: 0 1px 2px #000; }
+
+/* Morte: etiqueta com a causa acima da mira e a contagem da volta; o "clique para jogar" continua por baixo. */
+.hud-death {
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 96px);
+  translate: -50% 0;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.hud-death-cause { font: 800 1.25rem / 1.2 var(--font-title); transform: rotate(-2deg); }
+
+.hud-death-timer {
+  font: 800 0.8rem var(--font-mono);
+  letter-spacing: 0.1em;
+  color: var(--paper);
+  text-shadow: 0 1px 2px #000;
+}
+
 /* Andar silencioso ligado: aviso curto logo abaixo da mira. */
 .hud-walk {
   position: absolute;

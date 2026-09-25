@@ -8,6 +8,9 @@
 //    de borda em contraluz. "Piso" de sombra saturado: massinha nunca fica preta.
 //  - Costuras (aSeam) e sulcos escurecem puxando para o tom saturado; fiapos/pontinhos opcionais.
 //  - Skins procedurais (src/data/claySkins.js) por define.
+//  - Impressão (opcional, define CLAY_IMPRINT): textura de relevo na face de cima — R = fundo da marca, G = lábio de
+//    massa empurrada, B = marcas do rolo — mapeada pelo XZ do objeto; desloca a normal (4 amostras) e escurece e alisa o
+//    fundo. Letras carimbadas e furinhos das placas da pista (3.3); as pegadas da 3.5 vêm pelo mesmo caminho.
 
 import * as THREE from 'three';
 import { NOISE_GLSL } from './glsl/noise.js';
@@ -81,6 +84,13 @@ uniform vec3 uClayColorB;
 uniform vec3 uClayColorC;
 uniform vec4 uClaySkinParams;
 uniform vec4 uClayProbe;
+#ifdef CLAY_IMPRINT
+uniform sampler2D uClayImprint;
+uniform vec4 uClayImprintRect;
+uniform vec3 uClayImprintDepth;
+uniform vec2 uClayImprintTexel;
+#endif
+float clayImprintMask = 0.0;
 ${objectSpaceVaryings('Clay')}
 varying float vClayTouch;
 varying float vClaySeam;
@@ -172,12 +182,35 @@ diffuseColor.rgb = claySkinColor(vClayPos, diffuseColor.rgb, uClayColorB, uClayC
   diffuseColor.rgb = mix(diffuseColor.rgb, uClayLintColor, fiber * uClayLint);
   diffuseColor.rgb *= 1.0 - dust * uClayLint * 0.6;
 }
+#ifdef CLAY_IMPRINT
+{
+  // uv da impressão pelo XZ do objeto (retângulo com largura negativa = espelhado); só a face de cima recebe.
+  vec2 iuv = (vClayPos.xz - uClayImprintRect.xy) / uClayImprintRect.zw;
+  float top = smoothstep(0.6, 0.9, clayN.y) * step(0.0, iuv.x) * step(iuv.x, 1.0) * step(0.0, iuv.y) * step(iuv.y, 1.0);
+  vec3 hw = vec3(-uClayImprintDepth.x, uClayImprintDepth.y, uClayImprintDepth.z);
+  vec2 tx = uClayImprintTexel;
+  vec4 c0 = texture(uClayImprint, iuv);
+  float hL = dot(texture(uClayImprint, iuv - vec2(tx.x, 0.0)).rgb, hw);
+  float hR = dot(texture(uClayImprint, iuv + vec2(tx.x, 0.0)).rgb, hw);
+  float hD = dot(texture(uClayImprint, iuv - vec2(0.0, tx.y)).rgb, hw);
+  float hU = dot(texture(uClayImprint, iuv + vec2(0.0, tx.y)).rgb, hw);
+  // Diferença central em u do objeto (o sinal do retângulo cuida do espelhamento).
+  float dhdx = (hR - hL) / (2.0 * uClayImprintRect.z * tx.x);
+  float dhdz = (hU - hD) / (2.0 * uClayImprintRect.w * tx.y);
+  clayObjN = normalize(clayObjN + vec3(-dhdx, 0.0, -dhdz) * top);
+  // Fundo da marca: massa comprimida, mais escura e mais lisa (o carimbo alisa); o lábio pega mais luz.
+  clayImprintMask = c0.r * top;
+  diffuseColor.rgb = mix(diffuseColor.rgb, clayDeepen(diffuseColor.rgb), clayImprintMask * 0.35);
+  diffuseColor.rgb *= 1.0 + c0.g * top * 0.04;
+}
+#endif
 `;
 
 const FRAG_ROUGHNESS = /* glsl */ `
 #include <roughnessmap_fragment>
 roughnessFactor = clamp(roughnessFactor + clayFp.b * clayFpAmt * 0.12 - clayTool.b * 0.08 + vClaySeam * 0.1, 0.25, 1.0);
 roughnessFactor = mix(roughnessFactor, 0.16, claySkinFlake);
+roughnessFactor = clamp(roughnessFactor - clayImprintMask * 0.18, 0.2, 1.0);
 `;
 
 const FRAG_METALNESS = /* glsl */ `
@@ -189,7 +222,7 @@ metalnessFactor = mix(metalnessFactor, 0.6, claySkinFlake);
 const FRAG_NORMAL = /* glsl */ `
 #include <normal_fragment_maps>
 clayGeomN = normal;
-#if defined(CLAY_FINGERPRINTS) || CLAY_SKIN == 2
+#if defined(CLAY_FINGERPRINTS) || CLAY_SKIN == 2 || defined(CLAY_IMPRINT)
   normal = normalize(vClayAx * clayObjN.x + vClayAy * clayObjN.y + vClayAz * clayObjN.z);
   #ifdef DOUBLE_SIDED
     normal *= faceDirection;
@@ -319,6 +352,8 @@ const DEFAULTS = Object.freeze({
   lint: 0.35,
   lintColor: '#DCD6CB',
   seed: null,
+  // { map: Texture, rect: [x0, z0, largura, profundidade] no XZ do objeto, depth, lip, roller (u) } ou null
+  imprint: null,
 });
 
 const PARAM_KEYS = Object.keys(DEFAULTS);
@@ -374,8 +409,10 @@ export class ClayMaterial extends THREE.MeshPhysicalMaterial {
       uClayColorC: { value: colorC },
       uClaySkinParams: { value: new THREE.Vector4(...skin.params) },
     };
+    this.clayImprint = false;
+    if (p.imprint) this.setImprint(p.imprint);
     this.customProgramCacheKey = () =>
-      `clay:${this.skinId}:${clayFlags.fingerprints ? 1 : 0}:${clayFlags.boil ? 1 : 0}:${clayFlags.blackProbe ? 1 : 0}`;
+      `clay:${this.skinId}:${clayFlags.fingerprints ? 1 : 0}:${clayFlags.boil ? 1 : 0}:${clayFlags.blackProbe ? 1 : 0}:${this.clayImprint ? 1 : 0}`;
     this.onBeforeCompile = (shader) => this.#patch(shader);
     registerClayMaterial(this);
   }
@@ -387,6 +424,7 @@ export class ClayMaterial extends THREE.MeshPhysicalMaterial {
     if (clayFlags.fingerprints) shader.defines.CLAY_FINGERPRINTS = '';
     if (clayFlags.boil) shader.defines.CLAY_BOIL = '';
     if (clayFlags.blackProbe) shader.defines.CLAY_BLACK_PROBE = '';
+    if (this.clayImprint) shader.defines.CLAY_IMPRINT = '';
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${VERT_PARS}`)
       .replace('#include <begin_vertex>', VERT_BOIL)
@@ -410,6 +448,31 @@ export class ClayMaterial extends THREE.MeshPhysicalMaterial {
     this.clay.size = r;
     this.clayUniforms.uClayBoilAmp.value = this.clay.boil * r;
     this.clayUniforms.uClayBoilFreq.value = 2.2 / r;
+    return this;
+  }
+
+  /**
+   * Liga (ou troca) a impressão: `map` com R = fundo, G = lábio, B = rolo; `rect` = [x0, z0, largura, profundidade] no XZ
+   * do objeto (largura negativa espelha); `depth`/`lip`/`roller` em u. A textura é de quem chama (o mapa a libera).
+   */
+  setImprint({ map, rect, depth = 1.6, lip = 0.35, roller = 0.08 }) {
+    const had = this.clayImprint;
+    const u = this.clayUniforms;
+    // Os objetos de uniform são os mesmos que o programa compilado lê: troca só o valor.
+    if (!u.uClayImprint) {
+      u.uClayImprint = { value: null };
+      u.uClayImprintRect = { value: new THREE.Vector4() };
+      u.uClayImprintDepth = { value: new THREE.Vector3() };
+      u.uClayImprintTexel = { value: new THREE.Vector2() };
+    }
+    const img = map.image;
+    u.uClayImprint.value = map;
+    u.uClayImprintRect.value.set(rect[0], rect[1], rect[2], rect[3]);
+    u.uClayImprintDepth.value.set(depth, lip, roller);
+    u.uClayImprintTexel.value.set(1 / (img?.width ?? 512), 1 / (img?.height ?? 512));
+    this.clay.imprint = { map, rect: [...rect], depth, lip, roller };
+    this.clayImprint = true;
+    if (!had) this.needsUpdate = true;
     return this;
   }
 
@@ -464,8 +527,10 @@ export class ClayMaterial extends THREE.MeshPhysicalMaterial {
       this.skinId = source.skinId;
       this.clayUniforms = {};
       for (const [k, u] of Object.entries(source.clayUniforms)) {
-        this.clayUniforms[k] = { value: u.value?.clone ? u.value.clone() : u.value };
+        // Texturas são compartilhadas (a impressão é do mapa); vetores e cores, copiados.
+        this.clayUniforms[k] = { value: u.value?.isTexture ? u.value : u.value?.clone ? u.value.clone() : u.value };
       }
+      this.clayImprint = source.clayImprint;
     }
     return this;
   }

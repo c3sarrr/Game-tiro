@@ -1,8 +1,8 @@
-// Aceite "nenhum atravessamento de parede em 10 min" automatizado (Fases 3.1 e 3.2): 38.400 ticks de entrada
-// aleatória — com andar, spam de agachar, pulos (stamina) e troca do item na mão (velocidades de 100 a 250, sniper
-// lenta) —, empurrões de até 3500 u/s, paredes de 0,5 a 2 u dividindo a sala em células e um painel em movimento. A
-// célula do jogador nunca muda, ele nunca fica penetrando nada nem preso. Depois, a mesma seed repetida dá o mesmo
-// estado inteiro, bit a bit.
+// Aceite "nenhum atravessamento de parede em 10 min" automatizado (Fases 3.1, 3.2 e 3.4): 38.400 ticks de entrada
+// aleatória — com andar, spam de agachar, pulos (stamina), slides, wall-jumps e troca do item na mão (velocidades de 100
+// a 250, sniper lenta) —, empurrões de até 3500 u/s, paredes de 0,5 a 2 u dividindo a sala em células e um painel em
+// movimento. A célula do jogador nunca muda, ele nunca fica penetrando nada nem preso. Depois, a mesma seed repetida dá
+// o mesmo estado inteiro, bit a bit (com o slide e o wall-jump).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -64,7 +64,7 @@ function simulate(seed, ticks, { check }) {
   const dir = { x: 0, y: 0, z: 0 };
   const stats = {
     maxSpeed: 0, jumps: 0, kicks: 0, groundTicks: 0, duckTicks: 0, walkTicks: 0, blockedDucks: 0, items: new Set(),
-    maxStamina: 0,
+    maxStamina: 0, slides: 0, wallJumps: 0,
   };
   const startCell = cellOf(p.state.origin);
   let phase = 0;
@@ -72,6 +72,7 @@ function simulate(seed, ticks, { check }) {
   let jumpRate = 0;
   let duckRate = 0;
   let walkRate = 0;
+  let slideTaps = false; // Ctrl seguro 24 ticks a cada 48 (um aperto limpo por ciclo: slides quando corre)
   for (let i = 0; i < ticks; i++) {
     panel.setMatrix(m.makeTranslation(-30 + 60 * Math.sin((2 * Math.PI * i * DT) / 4), 50, 150));
     if (phase-- <= 0) {
@@ -89,13 +90,22 @@ function simulate(seed, ticks, { check }) {
       jumpRate = rng.pick([0, 0.05, 0.3]);
       duckRate = rng.pick([0, 0, 0.5, 1]); // 0,5: aperta e solta a cada tick (spam)
       walkRate = rng.pick([0, 0, 1]);
+      // Fase de slides (1 em 4): corre para a frente quase reto e aperta o Ctrl uma vez a cada 48 ticks.
+      slideTaps = rng.bool(0.25);
+      if (slideTaps) {
+        p.cmd.forward = 1;
+        p.cmd.side = 0;
+        turn = rng.float(-1, 1);
+        jumpRate = 0;
+        walkRate = 0;
+      }
       const [item, zoom] = rng.pick(ITEMS);
       p.env.item = itemEnv(item, zoom);
       stats.items.add(`${item}:${zoom}`);
     }
     p.cmd.yaw += turn * DT;
-    p.cmd.buttons = (rng.bool(jumpRate) ? BTN.JUMP : 0) | (rng.bool(duckRate) ? BTN.DUCK : 0)
-      | (rng.bool(walkRate) ? BTN.WALK : 0);
+    const duck = slideTaps ? i % 48 < 24 : rng.bool(duckRate);
+    p.cmd.buttons = (rng.bool(jumpRate) ? BTN.JUMP : 0) | (duck ? BTN.DUCK : 0) | (rng.bool(walkRate) ? BTN.WALK : 0);
     // Empurrão (explosão, lançamento): até 3500 u/s em qualquer direção, inclusive direto contra as paredes.
     if (i % 200 === 199) {
       rng.onUnitSphere(dir);
@@ -113,7 +123,11 @@ function simulate(seed, ticks, { check }) {
     if (s.walking) stats.walkTicks++;
     if ((p.cmd.buttons & BTN.DUCK) && !s.duckHeld) stats.blockedDucks++;
     stats.maxStamina = Math.max(stats.maxStamina, s.stamina);
-    for (const e of p.env.events) if (e.type === 'jump') stats.jumps++;
+    for (const e of p.env.events) {
+      if (e.type === 'jump') stats.jumps++;
+      else if (e.type === 'slide' && e.phase === 'start') stats.slides++;
+      else if (e.type === 'walljump') stats.wallJumps++;
+    }
     if (!check) continue;
     if (cellOf(s.origin) !== startCell) assert.fail(`tick ${i}: atravessou para outra célula (${s.origin.toArray()})`);
     if (!(s.origin.y > -0.01 && s.origin.y + s.height < CEILING + 0.01)) assert.fail(`tick ${i}: saiu entre chão e teto (y ${s.origin.y})`);
@@ -133,6 +147,8 @@ test('10 min simulados com entrada aleatória e empurrões de até 3500 u/s: nen
   assert.ok(stats.walkTicks > 1000, `andando ${stats.walkTicks}`);
   assert.ok(stats.blockedDucks > 1000, `agachar travado pelo spam ${stats.blockedDucks}`);
   assert.ok(stats.maxStamina > 20, `stamina ${stats.maxStamina}`);
+  assert.ok(stats.slides > 20, `slides ${stats.slides}`);
+  assert.ok(stats.wallJumps > 20, `wall-jumps ${stats.wallJumps}`);
   assert.equal(stats.items.size, ITEMS.length, 'todos os itens passaram pela mão');
 });
 
@@ -147,7 +163,10 @@ test('a mesma seed dá o mesmo estado inteiro, bit a bit (2 min)', () => {
   const a = simulate('repetivel', 2 * 60 * 64, { check: false }).state;
   const b = simulate('repetivel', 2 * 60 * 64, { check: false }).state;
   assert.equal(snapshot(a), snapshot(b));
-  for (const key of ['duckSpeed', 'stamina', 'stepTimer', 'sinceDuck', 'walkFactor', 'staminaFactor', 'duckFactor']) {
+  for (const key of [
+    'duckSpeed', 'stamina', 'stepTimer', 'sinceDuck', 'walkFactor', 'staminaFactor', 'duckFactor',
+    'sliding', 'slideCooldown', 'jumpBuffer', 'wallTime', 'usedCount', 'usedBody',
+  ]) {
     assert.ok(key in a, `o estado tem ${key}`);
   }
 });

@@ -2,7 +2,8 @@
 // velocidade do começo do tick. Quando zera, com o jogador no chão, andando no plano e acima da velocidade mínima, dá
 // um passo e recomeça na cadência da classe (lenta abaixo de 220 u/s). Audível só com ≥ 135,2 u/s e sem o andar (Shift)
 // engatado; os passos silenciosos também saem, marcados, para as pegadas da 3.5. Diferença do CS: lá o relógio para
-// enquanto o passo é silencioso; aqui continua contando. Eventos no `env.events` do playerMove.
+// enquanto o passo é silencioso; aqui continua contando. No slide (subfase 3.4) não há passo: o relógio fica parado e
+// segue de onde estava depois. Eventos no `env.events` do playerMove.
 
 import { STEPS } from '../data/movement.js';
 import { SURFACES } from '../data/surfaces.js';
@@ -14,6 +15,7 @@ export function firstStepDelay(duckFlag) {
 
 /** Um tick do relógio dos passos. Estado em `s.stepTimer` (ms) e `s.stepFoot` (0 esquerdo, 1 direito). */
 export function updateSteps(s, env) {
+  if (s.sliding) return;
   const v = s.velocity;
   const speedSq = v.lengthSq();
   if (speedSq < STEPS.stoppedSpeedSq) {

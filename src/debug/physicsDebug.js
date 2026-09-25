@@ -1,14 +1,15 @@
 // r_colisao (Fase 3): arame das formas de colisão de cada corpo, a cápsula do jogador (em pé ou agachada, visível em
-// terceira pessoa e no noclip), a normal do chão e a normal do último contato que cortou a velocidade. Linhas sem luz,
+// terceira pessoa e no noclip), a normal do chão, a normal do último contato que cortou a velocidade e o contato de
+// parede da sonda do wall-jump enquanto vale (subfase 3.4: ponto e normal no plano, numa cor própria). Linhas sem luz,
 // sem névoa e por cima de tudo (visão de raio X: o arame das peças coincide com a malha visual e brigaria com ela no
 // depth); corpos que se mexem acompanham a matriz.
 
 import * as THREE from 'three';
-import { HULL } from '../data/movement.js';
+import { HULL, WALLJUMP } from '../data/movement.js';
 import { TRI_STRIDE } from '../physics/geometryQueries.js';
 import { MOVETYPE } from '../player/movement.js';
 
-const COLORS = Object.freeze({ edges: 0xffd23f, capsule: 0x3fb8af, normal: 0xe4572e, contact: 0xf4ede1 });
+const COLORS = Object.freeze({ edges: 0xffd23f, capsule: 0x3fb8af, normal: 0xe4572e, contact: 0xf4ede1, wall: 0xf28f3b });
 const NORMAL_LENGTH = 28;
 
 /** Segmento de duas pontas com posição atualizável (normais). */
@@ -96,8 +97,9 @@ export class PhysicsDebugView {
     });
     this.materials = [
       lineMaterial(COLORS.edges, 0.5), lineMaterial(COLORS.capsule, 0.9), lineMaterial(COLORS.normal), lineMaterial(COLORS.contact),
+      lineMaterial(COLORS.wall),
     ];
-    const [edgeMat, capsuleMat, normalMat, contactMat] = this.materials;
+    const [edgeMat, capsuleMat, normalMat, contactMat, wallMat] = this.materials;
     this.bodies = world.bodies.map((body) => {
       const lines = new THREE.LineSegments(edgesGeometry(body), edgeMat);
       lines.matrixAutoUpdate = false;
@@ -110,7 +112,9 @@ export class PhysicsDebugView {
     this.duck = new THREE.LineSegments(capsuleGeometry(HULL.radius, HULL.duckHeight), capsuleMat);
     this.normal = segmentLine(normalMat);
     this.contact = segmentLine(contactMat);
-    this.group.add(this.stand, this.duck, this.normal, this.contact);
+    this.wall = segmentLine(wallMat);
+    this._wallNormal = new THREE.Vector3();
+    this.group.add(this.stand, this.duck, this.normal, this.contact, this.wall);
     // Depois da cena (transparentes em ordem): o arame fica sempre por cima.
     this.group.traverse((o) => {
       o.renderOrder = 1000;
@@ -142,6 +146,9 @@ export class PhysicsDebugView {
     const c = pawn.controller.lastContact;
     this.contact.visible = c.valid;
     if (c.valid) setSegment(this.contact, c.point.x, c.point.y, c.point.z, c.normal);
+    // Contato de parede enquanto vale para o wall-jump (tolerância): ponto na parede e a normal no plano.
+    this.wall.visible = s.wallTime <= WALLJUMP.grace;
+    if (this.wall.visible) setSegment(this.wall, s.wallPx, s.wallPy, s.wallPz, this._wallNormal.set(s.wallNx, 0, s.wallNz));
   }
 
   dispose() {

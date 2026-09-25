@@ -208,13 +208,23 @@ export function buildCStand(set, { mountWorld, awayDir, floorY }) {
 }
 
 /**
+ * Centro da base da luminária de mesa no tampo (a colisão da base no mapa usa o mesmo ponto): recuada da lâmpada
+ * para trás da direção em que ela aponta.
+ */
+export function deskLampBase(bulb, target, reach = 230, tableY = 0) {
+  const aim = new THREE.Vector3().subVectors(target, bulb).normalize();
+  const back = aim.setY(0).normalize().multiplyScalar(-1);
+  return new THREE.Vector3().copy(bulb).addScaledVector(back, reach * 0.55).setY(tableY);
+}
+
+/**
  * Luminária de mesa articulada (luz prática) em espaço de mundo: lâmpada em `bulb`, apontando para `target`,
  * base sobre a mesa (y = tableY).
  */
 export function buildDeskLamp(set, { bulb, target, tableY = 0, reach = 230, emission, color }) {
   const aim = new THREE.Vector3().subVectors(target, bulb).normalize();
   const back = aim.clone().setY(0).normalize().multiplyScalar(-1);
-  const base = bulb.clone().addScaledVector(back, reach * 0.55).setY(tableY);
+  const base = deskLampBase(bulb, target, reach, tableY);
   const elbow = base.clone().add(new THREE.Vector3(0, (bulb.y - tableY) * 1.05, 0)).addScaledVector(back, reach * 0.25);
   const headBack = bulb.clone().addScaledVector(aim, -16);
   const group = new THREE.Group();

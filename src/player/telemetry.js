@@ -1,12 +1,12 @@
 // Telemetria do jogador para o debug (Fase 3.2): os últimos 256 ticks (4 s a 64 Hz) em arrays fixos — velocidade no
 // plano, teto do tick, velocidade da arma no modo atual, limiar de precisão, inaccuracy, desejo e velocidade no plano e
-// as marcas (chão, andando, FL_DUCKING). O gráfico do cl_showpos e o medidor de counter-strafe leem daqui; gravar não
-// aloca.
+// as marcas (chão, andando, FL_DUCKING; slide e wall-jump na 3.4). O gráfico do cl_showpos e o medidor de
+// counter-strafe leem daqui; gravar não aloca.
 
 export const TELEMETRY_SIZE = 256;
 
 /** Marcas de cada amostra. */
-export const TFLAG = Object.freeze({ GROUND: 1, WALK: 2, DUCK: 4 });
+export const TFLAG = Object.freeze({ GROUND: 1, WALK: 2, DUCK: 4, SLIDE: 8, WALLJUMP: 16 });
 
 export class Telemetry {
   constructor(size = TELEMETRY_SIZE) {

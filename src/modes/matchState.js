@@ -1,20 +1,26 @@
 // Estado "partida". Até os modos de jogo (Fase 8) roda o modo "livre" no mapa escolhido: em mapa com colisão o jogador
 // anda com a cápsula (PlayerPawn, Fase 3) e o inventário local; sem colisão (vitrine) voa com a câmera livre.
 // Responsável por: montar/desmontar o mapa (sem vazar GPU), jogador e câmera, contexto de entrada, pointer lock,
-// pausa, volta ao spawn ao cair do set, sensibilidade da luneta, trincos do andar, ferramentas de debug da física e do
-// movimento (medidor de counter-strafe) e o resumo que vai para a tela de resultado.
+// pausa, a vida no HUD de teste, a morte e a volta em 2 s (subfase 3.4: no ponto de volta — o último teleporte do
+// console que se sustentou, senão o spawn —; cair do set mata, com god volta ao spawn), sensibilidade da luneta,
+// trincos do andar, ferramentas de debug da física e do movimento (medidores de counter-strafe e de salto e queda), o
+// teleporte das estações (`estacao`, pista de testes) e o resumo que vai para a tela de resultado.
 
 import { EV, Subscriptions } from '../core/events.js';
 import { SANDBOX } from '../data/sandbox.js';
+import { VITALS } from '../data/vitals.js';
 import { getMapDef } from '../maps/index.js';
+import { ReturnPoint } from './returnPoint.js';
 import { createFpsCamera } from '../render/camera.js';
 import { disposeObject3D } from '../render/dispose.js';
 import { FreeCamera } from '../player/freeCamera.js';
 import { PlayerPawn } from '../player/playerPawn.js';
 import { itemName, zoomLevels } from '../player/hands.js';
+import { readyToRespawn } from '../player/vitals.js';
 import { PhysicsDebugView } from '../debug/physicsDebug.js';
 import { ShowPosPanel } from '../debug/showPos.js';
 import { StrafeMeter } from '../debug/strafeMeter.js';
+import { JumpMeter } from '../debug/jumpMeter.js';
 import { CONTEXT } from '../input/inputManager.js';
 import { createSandboxHud } from '../ui/sandboxHud.js';
 import { createPauseMenu } from '../ui/pauseMenu.js';
@@ -31,6 +37,7 @@ export class MatchState {
     this.physicsDebug = null;
     this.showPos = null;
     this.strafe = null; // medidor de counter-strafe (cl_showpos)
+    this.jump = null; // medidor de salto e queda (cl_showpos)
     this.hud = null;
     this.pause = null;
     this.paused = false;
@@ -39,6 +46,7 @@ export class MatchState {
     this.startedAt = 0;
     this.pausedMs = 0;
     this.pauseStart = 0;
+    this.returnPoint = new ReturnPoint(); // ponto de volta: o último teleporte do console neste mapa (senão o spawn)
   }
 
   async enter(params = {}) {
@@ -67,6 +75,7 @@ export class MatchState {
       this.physicsDebug = new PhysicsDebugView({ scene: this.map.scene, world: this.map.collision });
       this.showPos = new ShowPosPanel(s.debugRoot);
       this.strafe = new StrafeMeter(s.loop.stepDt);
+      this.jump = new JumpMeter(s.loop.stepDt);
       this.#applyDebugView();
       this.subs.add(s.config.watch('debug.', () => this.#applyDebugView()));
     } else {
@@ -81,7 +90,9 @@ export class MatchState {
 
     if (!s.roster.humans.some((p) => p.local)) s.roster.addHuman({ name: 'Você', local: true });
 
-    this.hud = createSandboxHud(s, { title: def.label, mode: this.map.collision ? 'andar' : 'voo' });
+    this.hud = createSandboxHud(s, {
+      title: def.label, mode: this.map.collision ? 'andar' : 'voo', stations: Boolean(this.map.stations?.length),
+    });
     this.pause = createPauseMenu(s, {
       onResume: () => this.resume(),
       onSettings: () => openSettings(s),
@@ -123,6 +134,21 @@ export class MatchState {
       this.subs.on(s.events, EV.PLAYER_WEAPON, () => this.#syncHeld());
       this.subs.on(s.events, EV.PLAYER_ZOOM, () => this.#syncHeld());
       this.#syncHeld();
+      // Vida no HUD de teste: dano (pisca e mostra quanto saiu), morte (etiqueta com a causa) e volta.
+      this.subs.on(s.events, EV.LOADOUT, () => this.#syncVitals());
+      this.subs.on(s.events, EV.PLAYER_HURT, ({ damage }) => {
+        this.#syncVitals();
+        this.hud.flashDamage(damage);
+      });
+      this.subs.on(s.events, EV.PLAYER_DEATH, ({ cause }) => {
+        this.returnPoint.failed(cause);
+        this.#syncVitals();
+      });
+      this.subs.on(s.events, EV.PLAYER_SPAWN, () => {
+        this.#syncVitals();
+        this.hud.setDeath(null);
+      });
+      this.#syncVitals();
     }
 
     this.devices = new Set([s.input.device]);
@@ -154,6 +180,13 @@ export class MatchState {
     const levels = zoomLevels(p.hands.item);
     const zoom = levels ? ` · luneta ${p.hands.zoom}/${levels}` : '';
     this.hud.setHeld(`na mão: ${itemName(p.hands.item)} · ${p.held.speed} u/s${zoom}`);
+  }
+
+  /** Etiqueta de vida do HUD de teste: vida do jogador e colete do inventário. */
+  #syncVitals() {
+    const p = this.player;
+    if (!(p instanceof PlayerPawn)) return;
+    this.hud.setVitals(p.vitals.health, p.loadout.armor);
   }
 
   async #lock() {
@@ -218,23 +251,46 @@ export class MatchState {
     if (this.paused || !this.player) return;
     // O olhar acumulado no quadro entra antes do tick: o comando do tick usa o yaw mais recente.
     this.player.applyLook(this.s.input.consumeLook());
-    this.player.tick(dt, this.s.input, { noclip: this.s.cheats.noclip, tick: tickIndex });
+    this.player.tick(dt, this.s.input, {
+      noclip: this.s.cheats.noclip, tick: tickIndex, god: this.s.cheats.god,
+      reduceMotion: this.s.config.get('accessibility.reduceMotion'),
+    });
     if (this.player instanceof PlayerPawn) {
+      this.returnPoint.update(this.player.vitals.alive, this.player.state.onGround);
       this.strafe.updateFrom(this.player.telemetry);
+      this.jump.update(this.player.state, this.player.env.events);
       // Luneta: a sensibilidade do olhar do próximo quadro segue o nível de zoom deste tick.
       this.s.input.lookScale = this.player.lookScale(this.s.config.get('controls.zoomSensitivity'));
     }
     this.#checkFellOut();
+    if (this.player instanceof PlayerPawn && readyToRespawn(this.player.vitals)) this.#respawn();
     this.map.tick?.(dt);
   }
 
-  /** Noclip desligado fora do set: o jogador cai sem chão. Bem abaixo do mapa, volta ao spawn. */
+  /**
+   * Fora do set (noclip desligado lá fora, ou um buraco): bem abaixo do mapa o jogador morre ("Caiu do set"); com god,
+   * volta ao spawn com o aviso. Nos dois casos, um ponto de volta em que ele ainda não tinha pisado sai (ReturnPoint).
+   */
   #checkFellOut() {
     const p = this.player;
     if (!(p instanceof PlayerPawn) || p.state.origin.y > this.map.bounds.min.y - SANDBOX.fallOutDepth) return;
+    if (!p.vitals.alive) return;
+    if (!this.s.cheats.god) {
+      p.kill('fora');
+      return;
+    }
+    this.returnPoint.failed('fora');
     const sp = this.map.spawn;
-    p.teleport(sp.position, sp.yaw, sp.pitch);
+    this.#place(sp.position, sp.yaw, sp.pitch);
     this.s.toasts.show('Caiu para fora do set: de volta ao spawn');
+  }
+
+  /** Volta ao jogo no ponto de volta (o último teleporte do console neste mapa que se sustentou, senão o spawn). */
+  #respawn() {
+    const point = this.returnPoint.pick(this.map.spawn);
+    this.player.respawn(point.position, point.yaw, point.pitch);
+    this.returnPoint.placed();
+    this.jump?.interrupt();
   }
 
   frame(alpha, dt) {
@@ -244,8 +300,12 @@ export class MatchState {
     const a = this.paused ? 1 : alpha;
     this.player.updateCamera(this.camera, a);
     this.physicsDebug?.update(this.player, a);
-    this.showPos?.update(this.player, this.strafe);
-    if (this.player instanceof PlayerPawn) this.hud.setWalking(!this.s.cheats.noclip && this.s.input.isDown('walk'));
+    this.showPos?.update(this.player, { strafe: this.strafe, jump: this.jump });
+    if (this.player instanceof PlayerPawn) {
+      const v = this.player.vitals;
+      this.hud.setWalking(v.alive && !this.s.cheats.noclip && this.s.input.isDown('walk'));
+      this.hud.setDeath(v.alive ? null : v.cause, Math.max(0, VITALS.respawnDelay - v.deadTime));
+    }
     this.map.frame?.(dt, this.camera);
   }
 
@@ -293,14 +353,27 @@ export class MatchState {
     this.physicsDebug = null;
     this.showPos = null;
     this.strafe = null;
+    this.jump = null;
     this.camera = null;
     this.pause = null;
     this.hud = null;
     this.paused = false;
+    this.returnPoint.clear();
   }
 
-  /** Teleporte do console (setpos) e respawn. */
-  teleport(position, yaw, pitch) {
+  /**
+   * Teleporte do console (setpos, estacao): vira o ponto de volta depois de morrer neste mapa (morrer da prancha de
+   * 1310 devolve à prancha); um ponto em que o mundo mata o jogador antes de ele pisar no chão (o vazio, o alto) sai
+   * (ReturnPoint).
+   */
+  teleport(position, yaw = this.player?.yaw ?? 0, pitch = this.player?.pitch ?? 0) {
+    this.returnPoint.set(position, yaw, pitch);
+    this.#place(position, yaw, pitch);
+  }
+
+  /** Leva o jogador ao ponto: o voo em andamento não conta no medidor de salto. */
+  #place(position, yaw, pitch) {
     this.player?.teleport(position, yaw, pitch);
+    this.jump?.interrupt();
   }
 }

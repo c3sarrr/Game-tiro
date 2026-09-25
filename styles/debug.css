@@ -163,3 +163,7 @@
 .dbg-showpos-legend .is-inaccuracy { color: var(--alert); }
 .dbg-showpos-legend .is-air { color: #7FA6DB; }
 .dbg-showpos-legend .is-air::before { border-top-width: 3px; border-top-color: var(--ct-blue); }
+.dbg-showpos-legend .is-slide { color: var(--tr-orange); }
+.dbg-showpos-legend .is-slide::before { border-top-width: 3px; }
+.dbg-showpos-legend .is-walljump { color: #E88AA8; }
+.dbg-showpos-legend .is-walljump::before { width: 0; height: 9px; border-top: 0; border-left: 1.5px solid currentColor; }

@@ -2,7 +2,9 @@
 // Unidades: 1 u = 1 cm na escala do boneco (72 u de altura) — as mesmas do CS, então os números batem com os dele.
 // As sv_* mudam em tempo de execução pelo console (`sv_gravity 600`); na partida online o host as replica.
 // Fonte dos números da Fase 3.2 (andar, agachar, stamina, bhop, passos): código do CS:GO e dados finais do jogo —
-// docs/research/csgo-movement-notes.md; decisões em docs/phases/phase-3.md (seção 3.2).
+// docs/research/csgo-movement-notes.md; decisões em docs/phases/phase-3.md (seção 3.2). Os da 3.4 (slide, wall-jump,
+// dano de queda) vêm do Doodle District (src/player.js da referência, convertido para a escala do CS) e do código do
+// CS:GO (CheckFalling, FlPlayerFallDamage); decisões em docs/phases/phase-3.md (seção 3.4).
 
 /** Jogador: cápsula para colidir e base chata (disco dos pés) para o chão. A origem fica nos pés (centro da base). */
 export const HULL = Object.freeze({
@@ -36,6 +38,15 @@ export const SV_DEFAULTS = Object.freeze({
   autobunnyhopping: 0, // 0: precisa soltar o pulo entre dois pulos
   timebetweenducks: 0.4, // s: sem estar agachado, agachar de novo antes disso (do último agachar completo) é ignorado
   accelerate_use_weapon_speed: 1, // aceleração no chão pela velocidade do item na mão
+  slide: 1, // 1: correr + agachar desliza (seção 0.6)
+  slide_speed: 1.2, // impulso do slide: no mínimo isto × a velocidade do item (12,8 ÷ 10,6 da referência)
+  slide_time: 0.6, // s: duração máxima do slide
+  slide_cooldown: 1, // s: recarga, contada do fim do slide
+  slide_friction: 0.12, // atrito do slide: fração do sv_friction
+  walljump: 1, // 1: pulo no ar encostado numa parede é wall-jump (seção 0.6)
+  walljump_up: 301.993377 * (9.2 / 9.6), // 289,41 u/s: 0,958 do pulo (a razão da referência), +52,35 u de ápice
+  walljump_maxspeed: 286, // teto da velocidade no plano do chute (o do bhop: 1,1 × 260)
+  falldamage_scale: 1, // escala do dano de queda (0 desliga)
 });
 
 /** Faixa aceita e ajuda de cada sv_* no console. `int`: 0/1 (arredonda). */
@@ -61,6 +72,15 @@ export const SV_VARS = Object.freeze([
   Object.freeze({
     key: 'accelerate_use_weapon_speed', min: 0, max: 1, int: true, help: '1 = aceleração pela velocidade da arma',
   }),
+  Object.freeze({ key: 'slide', min: 0, max: 1, int: true, help: '1 = correr + agachar desliza' }),
+  Object.freeze({ key: 'slide_speed', min: 0, max: 3, help: 'impulso do slide (× velocidade do item)' }),
+  Object.freeze({ key: 'slide_time', min: 0, max: 5, help: 'duração máxima do slide (s)' }),
+  Object.freeze({ key: 'slide_cooldown', min: 0, max: 10, help: 'recarga do slide (s, contada do fim)' }),
+  Object.freeze({ key: 'slide_friction', min: 0, max: 1, help: 'atrito do slide (fração do sv_friction)' }),
+  Object.freeze({ key: 'walljump', min: 0, max: 1, int: true, help: '1 = pulo no ar encostado numa parede é wall-jump' }),
+  Object.freeze({ key: 'walljump_up', min: 0, max: 2000, help: 'velocidade vertical do wall-jump (u/s)' }),
+  Object.freeze({ key: 'walljump_maxspeed', min: 0, max: 3500, help: 'teto da velocidade no plano do wall-jump (u/s)' }),
+  Object.freeze({ key: 'falldamage_scale', min: 0, max: 10, help: 'escala do dano de queda (0 desliga)' }),
 ]);
 
 /** Constantes do controlador (gamemovement.cpp do Source). */
@@ -110,6 +130,47 @@ export const DUCK = Object.freeze({
   minUnduck: 1.5, // levantar nunca é mais lento que isto
   flagClear: 0.75, // levantando, o FL_DUCKING cai quando o quanto agachou fica abaixo disto
   sinceMax: 60, // teto (s) do "tempo desde o último agachar completo"
+});
+
+/**
+ * Slide (seção 0.6; referência: o slide do Doodle District na escala do CS). Começa com o Ctrl apertado correndo no
+ * chão; impulso, duração, recarga e atrito são sv_* (sv_slide_speed, sv_slide_time, sv_slide_cooldown,
+ * sv_slide_friction). Velocidades em fração da velocidade do item na mão no modo atual.
+ */
+export const SLIDE = Object.freeze({
+  minSpeed: 0.8, // velocidade no plano mínima para começar (a referência: 6,3 m/s com sprint de 10,6 e andar de 6,6)
+  steer: 6 / 10.6, // controle lateral: o desejo empurra isto × a velocidade do item por segundo (6 m/s² da referência)
+  airTime: 0.35, // s no ar que o slide aguenta (a referência); pousando antes disso ele continua
+  endSpeed: DUCK.speedMultiplier, // abaixo disto o slide acaba: a velocidade do agachado (a referência: 3,5 m/s)
+});
+
+/**
+ * Wall-jump (seção 0.6; referência: o wall-jump do Doodle District). No ar, encostado numa parede, um aperto do pulo
+ * chuta para onde o jogador olha; a mesma parede só volta a valer depois do chão. Vertical e teto do chute são sv_*
+ * (sv_walljump_up, sv_walljump_maxspeed); o piso do chute é a velocidade do item na mão.
+ */
+export const WALLJUMP = Object.freeze({
+  reach: 4, // u além do raio da cápsula em que a sonda acha a parede
+  maxNormalY: 0.34, // parede: normal de contato a no máximo ~20° da horizontal (chão, teto e rampas não contam)
+  grace: 0.12, // s: o contato vale até isto depois de soltar a parede (a referência)
+  buffer: 0.15, // s: um aperto do pulo no ar fica armado isto (a referência)
+  cooldown: 0.35, // s entre dois wall-jumps (a referência)
+  maxRise: 7 / 9.6, // subindo mais rápido que isto × sv_jump_impulse não vale (7 m/s com pulo de 9,6 na referência)
+  minAway: 30, // graus: o chute sai pelo menos isto para fora da parede
+  sameWall: 45, // graus: mesma peça de colisão com a direção a até isto de uma já usada é a mesma parede
+  maxUsed: 16, // paredes usadas guardadas por voo (anel)
+  ageMax: 60, // teto (s) da idade do contato de parede: sem contato
+});
+
+/**
+ * Dano de queda (CS:GO: CheckFalling + FlPlayerFallDamage) com o limite seguro da seção 0.6: sem dano até a queda de
+ * ~420 u; depois, linear na velocidade de queda do pouso até o fatal, na razão do CS:GO
+ * (CS_PLAYER_FATAL_FALL_SPEED 1000 ÷ CS_PLAYER_MAX_SAFE_FALL_SPEED 580). Escala: sv_falldamage_scale.
+ */
+export const FALL = Object.freeze({
+  safeSpeed: Math.sqrt(2 * 800 * 420), // 819,756 u/s: queda de 420 u com a gravidade do CS (sv_gravity 800)
+  fatalSpeed: Math.sqrt(2 * 800 * 420) * (1000 / 580), // 1413,373 u/s
+  fatalDamage: 100, // dano no fatal (o "100" do CS: a vida inteira)
 });
 
 /** Passos (CCSPlayer::UpdateStepSound + CBasePlayer::UpdateStepSound): relógio em ms e velocidades em u/s. */

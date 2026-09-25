@@ -13,7 +13,7 @@ import { PostEffects } from './postEffects.js';
 import { GpuTimer } from './gpuTimer.js';
 import { AdaptiveResolution, frameBudgetMs } from './adaptiveResolution.js';
 import { RefreshEstimator } from './refreshRate.js';
-import { SHADOW_LEVELS } from '../data/qualityPresets.js';
+import { SHADOW_LEVELS, SHADOW_MAX_SIZE } from '../data/qualityPresets.js';
 import { setCameraAspect, setCameraFov } from './camera.js';
 import { installDisposeTracker, purgeStaleDisposeListeners, compactDisposeTracker } from './contextRestore.js';
 
@@ -196,7 +196,8 @@ export class RenderSystem {
     if (!scene) return;
     scene.traverse((obj) => {
       if (obj.isLight && obj.shadow && obj.castShadow) {
-        const size = Math.max(256, Math.round(level.mapSize * (obj.userData.shadowScale ?? 1)));
+        const cap = Math.min(SHADOW_MAX_SIZE, this.renderer.capabilities.maxTextureSize);
+        const size = Math.min(cap, Math.max(256, Math.round(level.mapSize * (obj.userData.shadowScale ?? 1))));
         if (obj.shadow.mapSize.x !== size) {
           obj.shadow.mapSize.set(size, size);
           obj.shadow.map?.dispose();

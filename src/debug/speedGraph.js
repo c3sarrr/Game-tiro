@@ -1,7 +1,8 @@
 // Gráfico do cl_showpos (Fase 3.2): os últimos 4 s da telemetria do jogador num canvas — a faixa preciso × impreciso
 // (abaixo e acima do limiar de precisão da arma na mão), o teto do tick, o limiar tracejado, a velocidade no plano, a
-// inaccuracy por cima, os ticks no ar numa tira embaixo e a marca de cada medida do counter-strafe com o tempo em ms. O
-// tick mais novo fica na borda direita. Redesenhado a cada atualização do painel (15 Hz).
+// inaccuracy por cima, os ticks no ar numa tira embaixo, os ticks de slide numa tira em cima e um risco em cada wall-jump
+// (3.4), e a marca de cada medida do counter-strafe com o tempo em ms. O tick mais novo fica na borda direita.
+// Redesenhado a cada atualização do painel (15 Hz).
 
 import { TFLAG } from '../player/telemetry.js';
 import { STRAFE_KIND } from './strafeMeter.js';
@@ -16,6 +17,8 @@ const COLOR = Object.freeze({
   speed: '#FFD23F',
   inaccuracy: '#E4572E',
   air: '#2F6DB5',
+  slide: '#F28F3B',
+  walljump: '#E88AA8',
   text: '#F6F0E4',
   [STRAFE_KIND.COUNTER]: '#FFD23F',
   [STRAFE_KIND.RELEASE]: '#F6F0E4',
@@ -24,6 +27,7 @@ const SPEED_TOP = 300; // u/s no topo da escala (o teto do bhop, 286, cabe); cre
 const SPEED_STEP = 50;
 const INACCURACY_TOP = 0.3; // rad no topo da curva de inaccuracy
 const AIR_STRIP = 3; // px da tira dos ticks no ar
+const SLIDE_STRIP = 3; // px da tira dos ticks de slide (em cima)
 const FONT = '600 10px ui-monospace, "Cascadia Mono", Consolas, "SF Mono", "Courier New", monospace'; // --font-mono
 
 export class SpeedGraph {
@@ -80,6 +84,10 @@ export class SpeedGraph {
         ctx.fillStyle = COLOR.air;
         ctx.fillRect(x0, h - AIR_STRIP, dx, AIR_STRIP);
       }
+      if (t.flags[j] & TFLAG.SLIDE) {
+        ctx.fillStyle = COLOR.slide;
+        ctx.fillRect(x0, 0, dx, SLIDE_STRIP);
+      }
     }
     ctx.strokeStyle = COLOR.grid;
     ctx.lineWidth = 1;
@@ -96,6 +104,17 @@ export class SpeedGraph {
     const yAcc = (j) => plotH - Math.min(1, t.inaccuracy[j] / INACCURACY_TOP) * plotH;
     this.#line(t, first, xOf, yAcc, COLOR.inaccuracy, 1, false);
     this.#line(t, first, xOf, (j) => yOf(t.speed[j]), COLOR.speed, 1.6, false);
+    // Wall-jumps: um risco de cima a baixo no tick do chute.
+    ctx.strokeStyle = COLOR.walljump;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = first; i < t.count; i++) {
+      if (!(t.flags[t.slot(i)] & TFLAG.WALLJUMP)) continue;
+      const x = Math.round(xOf(i)) + 0.5;
+      ctx.moveTo(x, SLIDE_STRIP);
+      ctx.lineTo(x, plotH);
+    }
+    ctx.stroke();
 
     ctx.font = FONT;
     ctx.textBaseline = 'top';

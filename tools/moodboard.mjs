@@ -39,6 +39,23 @@ const BOARDS = [
   { id: 'MFP', label: 'Miniature Food Photography Props', url: 'https://www.pinterest.com/ideas/miniature-food-photography-props/932796717606/', phase: '2.6' },
   { id: 'PLI', label: 'Plasticine Ideas', url: 'https://www.pinterest.com/ideas/plasticine-ideas/924839357923/', phase: '2.6' },
   { id: 'SMR', label: 'Stop Motion Rig', url: 'https://www.pinterest.com/ideas/stop-motion-rig/923657372951/', phase: '2.6' },
+  { id: 'COC', label: 'Cardboard Obstacle Course', url: 'https://www.pinterest.com/ideas/cardboard-obstacle-course/959069167784/', phase: '3.3' },
+  { id: 'CBT', label: 'Cardboard Box Tunnel', url: 'https://www.pinterest.com/ideas/cardboard-box-tunnel/958387563144/', phase: '3.3' },
+  { id: 'CFO', label: 'Cardboard Fingerboard Obstacles', url: 'https://www.pinterest.com/ideas/cardboard-fingerboard-obstacles/914410744968/', phase: '3.3' },
+  { id: 'CFR', label: 'Cardboard Fingerboard Ramps', url: 'https://www.pinterest.com/ideas/cardboard-fingerboard-ramps/948478168138/', phase: '3.3' },
+  { id: 'BAS', label: 'Books As Stairs', url: 'https://www.pinterest.com/ideas/books-as-stairs/943259823545/', phase: '3.3' },
+  { id: 'AWB', label: 'Architectural Wooden Building Blocks', url: 'https://www.pinterest.com/ideas/architectural-wooden-building-blocks/935841685680/', phase: '3.3' },
+  { id: 'WRG', label: 'Wall Ruler Growth Charts', url: 'https://www.pinterest.com/ideas/wall-ruler-growth-charts/907164492834/', phase: '3.3' },
+  { id: 'PKG', label: 'Parkour Gym', url: 'https://www.pinterest.com/ideas/parkour-gym/958718375641/', phase: '3.3' },
+  { id: 'PKC', label: 'Parkour Course', url: 'https://www.pinterest.com/ideas/parkour-course/915062227603/', phase: '3.3' },
+  { id: 'CFP', label: 'Clay Footprints', url: 'https://www.pinterest.com/ideas/clay-footprints/909576168004/', phase: '3.3' },
+  { id: 'CIM', label: 'Clay Imprints', url: 'https://www.pinterest.com/ideas/clay-imprints/952443037456/', phase: '3.3' },
+  { id: 'DFL', label: 'Desk Flatlay', url: 'https://www.pinterest.com/ideas/desk-flatlay/918272522219/', phase: '3.3' },
+  { id: 'BWM', label: 'Balsa Wood Models', url: 'https://www.pinterest.com/ideas/balsa-wood-models/953315394598/', phase: '3.3' },
+  { id: 'TMA', label: 'Tape Measure Aesthetic', url: 'https://www.pinterest.com/ideas/tape-measure-aesthetic/939157022954/', phase: '3.3' },
+  { id: 'PRU', label: 'Pencil Ruler', url: 'https://www.pinterest.com/ideas/pencil-ruler/922061658246/', phase: '3.3' },
+  { id: 'CMR', label: 'Cardboard Marble Run', url: 'https://www.pinterest.com/ideas/cardboard-marble-run/956681619018/', phase: '3.3' },
+  { id: 'LDB', label: 'Level Design Grey/Whiteboxes & Blockouts (danejcustance)', url: 'https://www.pinterest.com/danejcustance/level-design-greywhiteboxes-blockouts/', phase: '3.3' },
 ];
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);

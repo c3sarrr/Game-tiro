@@ -55,7 +55,7 @@ export class StudioRig {
     const key = this.entries.find((e) => e.def.id === this.def.dust?.light);
     if (key && key.light.isSpotLight) {
       const d = this.def.dust;
-      this.dust = new DustMotes({ light: key.light, count: d.count, size: d.size, drift: d.drift, seed: this.def.dust.light });
+      this.dust = new DustMotes({ light: key.light, count: d.count, size: d.size, drift: d.drift, seed: this.def.dust.light, box: d.box ?? null });
       this.dust.setColor(key.color, 3.2);
       this.group.add(this.dust.points);
     }
@@ -89,6 +89,8 @@ export class StudioRig {
       light.shadow.camera.far = ld.shadow.far;
       light.userData.shadowSoftness = ld.shadow.softness;
       light.userData.shadowScale = ld.shadow.scale;
+      // Frustum da sombra da spot apertado dentro do cone (mais texels no que importa; a borda do cone quase não tem luz).
+      if (ld.shadow.focus !== undefined && light.isSpotLight) light.shadow.focus = ld.shadow.focus;
     }
     this.group.add(light);
     const entry = { def: ld, light, position, target, distance, color: color.clone(), illuminance: ld.illuminance, kelvin: ld.kelvin, diffusers: [] };

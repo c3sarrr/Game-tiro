@@ -1,6 +1,6 @@
-// Testes do jogador local (Fases 3.1 e 3.2): comando do tick a partir da entrada, andar, interpolação da câmera,
+// Testes do jogador local (Fases 3.1, 3.2 e 3.4): comando do tick a partir da entrada, andar, interpolação da câmera,
 // suavização do degrau, noclip pelo tick, teleporte; troca de item pelo comando e automática, luneta (FOV interpolado,
-// sensibilidade, velocidade), precisão no tick, telemetria e os eventos no barramento.
+// sensibilidade, velocidade), precisão no tick, telemetria e os eventos no barramento — com o slide e o wall-jump.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -276,4 +276,50 @@ test('pawn (3.2): passos, pulo e pouso no barramento, com contagem', () => {
   input.down.add('crouch');
   ticks(pawn, input, 20, { start: 161 });
   assert.equal(seen.duck, 1);
+});
+
+test('pawn (3.4): slide e wall-jump no barramento, com contagem, último de cada e as marcas da telemetria', () => {
+  const bus = new EventBus();
+  const seen = { slide: [], walljump: [], duck: 0 };
+  bus.on(EV.PLAYER_SLIDE, (e) => seen.slide.push(e.phase === 'end' ? e.reason : e.phase));
+  bus.on(EV.PLAYER_WALLJUMP, (e) => seen.walljump.push(e));
+  bus.on(EV.PLAYER_DUCK, () => seen.duck++);
+  // Parede alta à direita (face em x = 100): corre ao longo dela para −z, desliza, pula e chuta nela.
+  const world = worldOf((b) => {
+    floor(b);
+    b.box(8, 2000, 4000, { center: [104, 1000, 0] });
+  });
+  const pawn = pawnOn(world, [100 - HULL.radius - 2, 0, 1500], { events: bus });
+  const input = testInput();
+  input.move.y = 1;
+  ticks(pawn, input, 60);
+  input.down.add('crouch');
+  ticks(pawn, input, 1, { start: 60 });
+  assert.deepEqual(seen.slide, ['start']);
+  assert.equal(seen.duck, 1, 'o slide agacha na hora (um evento de agachar)');
+  const t = pawn.telemetry;
+  assert.ok(t.flags[t.slot(t.count - 1)] & TFLAG.SLIDE, 'marca de slide');
+  ticks(pawn, input, 10, { start: 61 });
+  input.down.delete('crouch');
+  ticks(pawn, input, 1, { start: 71 });
+  assert.deepEqual(seen.slide, ['start', 'soltou']);
+  assert.equal(pawn.stats.slides, 1);
+  assert.equal(pawn.lastSlide.reason, 'soltou');
+  assert.ok(!(t.flags[t.slot(t.count - 1)] & TFLAG.SLIDE));
+  // Pulo do chão colado na parede; no ar, o aperto do pulo (depois da subida cair abaixo de 220 u/s) chuta.
+  ticks(pawn, input, 40, { start: 72 });
+  input.down.add('jump');
+  ticks(pawn, input, 1, { start: 112 });
+  input.down.delete('jump');
+  let tick = 113;
+  for (let i = 0; i < 20 && !seen.walljump.length; i++) {
+    if (i % 2) input.down.add('jump');
+    else input.down.delete('jump');
+    ticks(pawn, input, 1, { start: tick++ });
+  }
+  assert.equal(seen.walljump.length, 1);
+  assert.ok(Math.abs(seen.walljump[0].nx + 1) < 1e-9, 'normal da parede');
+  assert.equal(pawn.stats.wallJumps, 1);
+  assert.equal(pawn.lastWallJump.count, 1);
+  assert.ok(t.flags[t.slot(t.count - 1)] & TFLAG.WALLJUMP, 'marca do wall-jump no tick do chute');
 });

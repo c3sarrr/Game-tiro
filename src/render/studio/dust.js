@@ -2,9 +2,13 @@
 // dentro do cone da key e brilham mais olhando contra a luz (espalhamento para a frente, Henyey–Greenstein).
 // Como tudo no mundo stop-motion, a poeira muda de lugar a cada POSE (12/s), não a cada quadro: cada foto
 // pega a poeira num lugar novo, flutuando devagar com a convecção do calor da lâmpada.
+// Com `box`, a poeira só ocupa a parte do cone dentro da caixa (a pista: o ar da base, onde o boneco anda — a key fica
+// a 10 m e o cone inteiro espalharia os grãos longe da câmera).
 
 import * as THREE from 'three';
 import { RNG } from '../../core/rng.js';
+
+const _p = new THREE.Vector3();
 
 const VERT = /* glsl */ `
 attribute float aSize;
@@ -54,12 +58,14 @@ void main() {
 
 export class DustMotes {
   /**
-   * @param {{light: THREE.SpotLight, count:number, size:number, drift:number, seed?:string}} opts
+   * @param {{light: THREE.SpotLight, count:number, size:number, drift:number, seed?:string,
+   *   box?: {min:number[], max:number[]}|null}} opts
    */
-  constructor({ light, count, size = 1.6, drift = 6, seed = 'poeira' }) {
+  constructor({ light, count, size = 1.6, drift = 6, seed = 'poeira', box = null }) {
     this.light = light;
     this.capacity = count;
     this.drift = drift;
+    this.box = box ? new THREE.Box3(new THREE.Vector3(...box.min), new THREE.Vector3(...box.max)) : null;
     this.rng = new RNG(`poeira:${seed}`);
     this.positions = new Float32Array(count * 3);
     this.velocity = new Float32Array(count * 3);
@@ -113,8 +119,34 @@ export class DustMotes {
     return { pos, axis, u, v, range };
   }
 
+  /** Com caixa: um ponto sorteado na caixa que esteja dentro do cone (até 48 tentativas; senão, o sorteio do cone). */
+  #spawnInBox(i, f) {
+    const b = this.box;
+    const cosOuter = Math.cos(this.light.angle) + 0.004;
+    for (let k = 0; k < 48; k++) {
+      const x = this.rng.float(b.min.x, b.max.x);
+      const y = this.rng.float(b.min.y, b.max.y);
+      const z = this.rng.float(b.min.z, b.max.z);
+      const dx = x - f.pos.x;
+      const dy = y - f.pos.y;
+      const dz = z - f.pos.z;
+      if ((dx * f.axis.x + dy * f.axis.y + dz * f.axis.z) / Math.hypot(dx, dy, dz) < cosOuter) continue;
+      this.positions[i * 3] = x;
+      this.positions[i * 3 + 1] = y;
+      this.positions[i * 3 + 2] = z;
+      return true;
+    }
+    return false;
+  }
+
   #spawn(i) {
     const f = this._frame ?? (this._frame = this.#coneFrame());
+    if (this.box && this.#spawnInBox(i, f)) {
+      this.velocity[i * 3] = this.rng.float(-1, 1);
+      this.velocity[i * 3 + 1] = this.rng.float(0, 1);
+      this.velocity[i * 3 + 2] = this.rng.float(-1, 1);
+      return;
+    }
     const t = this.rng.float(0.2, 1.15) * f.range;
     const radius = Math.tan(this.light.angle) * t * Math.sqrt(this.rng.next()) * 0.95;
     const a = this.rng.float(0, Math.PI * 2);
@@ -171,7 +203,10 @@ export class DustMotes {
       const dz = p[k + 2] - f.pos.z;
       const along = dx * f.axis.x + dy * f.axis.y + dz * f.axis.z;
       const len = Math.hypot(dx, dy, dz);
-      if (along < f.range * 0.15 || along > f.range * 1.2 || along / Math.max(len, 1e-4) < cosOuter) this.#spawn(i);
+      const outside = this.box
+        ? !this.box.containsPoint(_p.set(p[k], p[k + 1], p[k + 2]))
+        : along < f.range * 0.15 || along > f.range * 1.2;
+      if (outside || along / Math.max(len, 1e-4) < cosOuter) this.#spawn(i);
     }
     this.posAttr.needsUpdate = true;
   }

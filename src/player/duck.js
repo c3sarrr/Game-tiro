@@ -1,7 +1,8 @@
 // Agachar do CS:GO (CCSGameMovement: DuckingEnabled/CheckParameters, Duck, CanUnduck, FinishDuck, FinishUnDuck e
 // HandleDuckingSpeedCrop): penalidade de spam, transição com velocidade própria, troca de cápsula (no ar na hora, com
 // os pés ±9), o FL_DUCKING (`duckFlag`: vale como agachado para a precisão, os passos e o andar) e o corte do teto de
-// velocidade. Opera sobre o estado de movimento (src/player/movement.js) com as consultas do CharacterController.
+// velocidade. Opera sobre o estado de movimento (src/player/movement.js) com as consultas do CharacterController. O
+// slide (subfase 3.4) agacha na hora pelo snapDuck.
 
 import { CONTROLLER, DUCK, HULL } from '../data/movement.js';
 import { BTN } from './moveCmd.js';
@@ -50,6 +51,23 @@ function finishDuck(s, env) {
   s.sinceDuck = 0;
   env.controller.categorizePosition(s);
   env.events.push({ type: 'duck' });
+}
+
+/**
+ * Agachar na hora, no chão (começo do slide): cápsula agachada, agachar completo e FL_DUCKING, sem a transição. A queda
+ * do olho vai para `s.viewOffset` e a câmera suaviza, como na troca de cápsula no ar.
+ */
+export function snapDuck(s, env) {
+  const eye0 = eyeHeight(s);
+  const wasDucked = s.ducked && s.duckAmount >= 1;
+  s.ducking = false;
+  s.ducked = true;
+  s.height = HULL.duckHeight;
+  s.duckFlag = true;
+  s.duckAmount = 1;
+  s.sinceDuck = 0;
+  s.viewOffset -= eyeHeight(s) - eye0;
+  if (!wasDucked) env.events.push({ type: 'duck' });
 }
 
 /** FinishUnDuck: transição encerrada em pé. Recategoriza: levantar no ar pode pousar ali mesmo (o duckbug do CS:GO). */

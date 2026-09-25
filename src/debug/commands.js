@@ -14,6 +14,8 @@ import { itemName } from '../player/hands.js';
 import { registerPostCommands } from './postCommands.js';
 import { registerShowcaseCommands } from './showcaseCommands.js';
 import { registerMovementCommands } from './movementCommands.js';
+import { registerStationCommands } from './stationCommands.js';
+import { registerVitalsCommands } from './vitalsCommands.js';
 import { onOff } from './consoleArgs.js';
 
 const DEG = Math.PI / 180;
@@ -80,6 +82,8 @@ export function registerCommands(con, s) {
     name: 'noclip', usage: '[0|1]', help: 'voar atravessando paredes',
     run: ([v]) => `noclip ${s.cheats.set('noclip', onOff(v, s.cheats.noclip)) ? 'LIGADO' : 'desligado'}`,
   });
+  // Vida do jogador local (3.4): kill e hurtme.
+  registerVitalsCommands(con, { matchState, cheats: s.cheats });
 
   reg({
     name: 'give', usage: '<arma|item|bomba>',
@@ -361,4 +365,6 @@ export function registerCommands(con, s) {
   registerShowcaseCommands(con, s, { goState, matchState });
   // Movimento e colisão (Fase 3): variáveis sv_*, colisão visível, cl_showpos e câmera em terceira pessoa.
   registerMovementCommands(con, s);
+  // Estações do mapa (pista de testes, 3.3): estacao [n|nome] [ponto].
+  registerStationCommands(con, { matchState });
 }

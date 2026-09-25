@@ -2,13 +2,18 @@
 // cache (mesma chave = mesmo material, menos programas e trocas de estado) e acompanha a anisotropia da config
 // e a perda/recuperação do contexto WebGL (as texturas assadas precisam ser refeitas).
 // Mapas pedem materiais aqui: set.cardboard(), set.tape({ width }), set.cuttingMat({ size }), ...
+// Materiais que leem um atlas do próprio mapa (livros, desenhos, fita com etiquetas) são criados pelo mapa com as
+// fábricas de bookMaterial.js, printMaterials.js e paperMaterials.js e entram na biblioteca por adopt().
 
 import { EV } from '../../core/events.js';
 import { bakeSetTextures } from './setTextures.js';
 import { cardboardMaterial, tapeMaterial, tapeSideMaterial } from './paperMaterials.js';
 import { toolMetalMaterial, wireMaterial, chromeMaterial, blackMetalMaterial } from './metalMaterials.js';
-import { balsaMaterial, benchWoodMaterial } from './woodMaterials.js';
+import { balsaMaterial, beechMaterial, benchWoodMaterial, plywoodMaterial } from './woodMaterials.js';
 import { cuttingMatMaterial, plasticMaterial, fabricMaterial, diffuserMaterial } from './surfaceMaterials.js';
+import { measureMaterial } from './measureMaterials.js';
+import { paperMaterial } from './printMaterials.js';
+import { paintMaterial, floorPaintMaterial } from './paintMaterials.js';
 
 const FACTORIES = Object.freeze({
   cardboard: cardboardMaterial,
@@ -19,11 +24,17 @@ const FACTORIES = Object.freeze({
   chrome: chromeMaterial,
   blackMetal: blackMetalMaterial,
   balsa: balsaMaterial,
+  beech: beechMaterial,
+  plywood: plywoodMaterial,
   benchWood: benchWoodMaterial,
   cuttingMat: cuttingMatMaterial,
   plastic: plasticMaterial,
   fabric: fabricMaterial,
   diffuser: diffuserMaterial,
+  measure: measureMaterial,
+  paper: paperMaterial,
+  paint: paintMaterial,
+  floorPaint: floorPaintMaterial,
 });
 
 export class SetLibrary {

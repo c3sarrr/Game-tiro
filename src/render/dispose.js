@@ -43,7 +43,8 @@ export function disposeObject3D(root) {
       obj.shadow.map.dispose();
       obj.shadow.map = null;
     }
-    if (obj.isInstancedMesh) obj.dispose();
+    // Instâncias e lotes guardam texturas próprias (matrizes, cores, índices): o dispose deles libera essas também.
+    if (obj.isInstancedMesh || obj.isBatchedMesh) obj.dispose();
   });
   root.removeFromParent();
 }

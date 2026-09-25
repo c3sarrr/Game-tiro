@@ -30,10 +30,28 @@ Lista crua dos pins: `docs/art/pinterest-boards.json`.
 | MFP | Miniature Food Photography Props — pinterest.com/ideas/miniature-food-photography-props/932796717606 |
 | PLI | Plasticine Ideas — pinterest.com/ideas/plasticine-ideas/924839357923 |
 | SMR | Stop Motion Rig — pinterest.com/ideas/stop-motion-rig/923657372951 |
+| COC | Cardboard Obstacle Course — pinterest.com/ideas/cardboard-obstacle-course/959069167784 |
+| CBT | Cardboard Box Tunnel — pinterest.com/ideas/cardboard-box-tunnel/958387563144 |
+| CFO | Cardboard Fingerboard Obstacles — pinterest.com/ideas/cardboard-fingerboard-obstacles/914410744968 |
+| CFR | Cardboard Fingerboard Ramps — pinterest.com/ideas/cardboard-fingerboard-ramps/948478168138 |
+| BAS | Books As Stairs — pinterest.com/ideas/books-as-stairs/943259823545 |
+| AWB | Architectural Wooden Building Blocks — pinterest.com/ideas/architectural-wooden-building-blocks/935841685680 |
+| WRG | Wall Ruler Growth Charts — pinterest.com/ideas/wall-ruler-growth-charts/907164492834 |
+| PKG | Parkour Gym — pinterest.com/ideas/parkour-gym/958718375641 |
+| PKC | Parkour Course — pinterest.com/ideas/parkour-course/915062227603 |
+| CFP | Clay Footprints — pinterest.com/ideas/clay-footprints/909576168004 |
+| CIM | Clay Imprints — pinterest.com/ideas/clay-imprints/952443037456 |
+| DFL | Desk Flatlay — pinterest.com/ideas/desk-flatlay/918272522219 |
+| BWM | Balsa Wood Models — pinterest.com/ideas/balsa-wood-models/953315394598 |
+| TMA | Tape Measure Aesthetic — pinterest.com/ideas/tape-measure-aesthetic/939157022954 |
+| PRU | Pencil Ruler — pinterest.com/ideas/pencil-ruler/922061658246 |
+| CMR | Cardboard Marble Run — pinterest.com/ideas/cardboard-marble-run/956681619018 |
+| LDB | Level Design Grey/Whiteboxes & Blockouts — pinterest.com/danejcustance/level-design-greywhiteboxes-blockouts |
 
-Os boards TSH, SMA, SML e BTS entraram na subfase 2.5 (pós-processamento) e os treze de CLT a SMR na subfase 2.6
-(vitrine e revisão do look): só os pins estudados estão na lista, renumerados a partir de 1 (ID = prefixo + posição
-em `pinterest-boards.json`). Um mesmo pin pode aparecer em dois boards (ex.: ARM5 = CLF1).
+Os boards TSH, SMA, SML e BTS entraram na subfase 2.5 (pós-processamento), os treze de CLT a SMR na subfase 2.6
+(vitrine e revisão do look) e os dezessete de COC a LDB na subfase 3.3 (pista de testes): só os pins estudados estão
+na lista, renumerados a partir de 1 (ID = prefixo + posição em `pinterest-boards.json`). Um mesmo pin pode aparecer em
+dois boards (ex.: ARM5 = CLF1; CFR1 = CFO7; CBT8 = COC2). O PKC ficou sem os seis pins que repetiam o PKG e o COC.
 
 Leituras técnicas: relatório "Creating a Realistic Clay Shader for Digital Stop Motion" (Z. Rowbotham, UWE — zar67 portfolio) e o post "Claymation Style in 3D" (slamatron). Guia de estúdio caseiro de Terry Ibele.
 
@@ -175,3 +193,34 @@ inclinada sobre o tapete, foco médio (contexto de pós `vitrine`), a mesa como 
 | Braço de rig (haste articulada com base pesada e garra) segurando o boneco na frente do chroma. | SMR1, SMR4, SMR7 | Registrado para as bordas dos mapas (Fase 6) e para a mão/rig do animador entre rodadas; a vitrine não usa. |
 | Luz parada e nada se movendo na mesa: a sombra não precisa ser refeita a cada quadro. | (desempenho) | Sombra estática por mapa (`staticShadows`): o mapa de sombra só é refeito quando algo pede (troca de qualidade, contexto recuperado) — ~1,4 ms de GPU a menos por quadro na vitrine (RTX 2070, preset Leve) (`src/render/renderSystem.js`). |
 | O desfoque de fundo de uma lente é liso; o DOF em meia resolução deixava silhuetas "cabeludas". | TSH1, TSH15 | Rotação do disco por ruído de gradiente intercalado (Jimenez 2014) + pós-filtro em tenda 3×3 na meia resolução (`src/render/passes/dofPass.js`). |
+
+## 11. Pista de testes (subfase 3.3)
+
+Dezessete boards novos (COC a LDB, 330 pins) estudados para a pista de testes de movimento, mais a página
+"Counter-Strike: Global Offensive/Mapper's Reference" da Valve Developer Community (medidas de mapa do CS:GO: caixa
+grande ≥ 72, caixa de "headglitch" 56–60, degrau ≤ 18 com piso ≥ 16, rampa andável até 45,573°, corredor > 32, teto que
+não bate a 73 em pé e 55 agachado, alturas alcançáveis e tabelas de dano de queda). A pista é um **parque de estações**
+montado pelos animadores no chão do estúdio (desenho aprovado em 2026-09-25, `docs/phases/phase-3.md`, seção 3.3). A
+chave de tudo é a escala: **1 u = 1 mm** (o boneco de 72 u tem 7,2 cm), então cada objeto do dia a dia entra com a
+medida verdadeira e vira arquitetura — um livro deitado (150 × 230 × 8–24 u) é um degrau, uma régua (300 × 30 × 3 u) é
+uma trave, uma trena de 5 m é a faixa de bhop.
+
+| Observação | Referências | Decisão (arquivo) |
+|---|---|---|
+| Pista de obstáculos de criança: estações em sequência com placas escritas à mão e uma **planta desenhada** (caminho tracejado, números, largada e chegada). | COC5, COC30, COC32, PKC12, PKC1, CFO19 | 12 estações numeradas; plaquinha de papelão dobrada em "A" com número e nome em cada lote; planta da pista desenhada a lápis numa prancheta no spawn, gerada dos próprios dados do layout (`src/maps/pista/visual/art.js`, `src/data/pista.js`). |
+| Foto de bancada vista de cima: objetos paralelos e ortogonais com respiro (knolling); ginásio de parkour e blockout de jogo marcam áreas e rotas com **linhas no chão**. | DFL1, DFL5, DFL10, PKG1, PKG8, LDB9, LDB15 | Lotes alinhados à grade da base, cada um demarcado no compensado com fita crepe; peças de cada estação alinhadas entre si (`src/maps/pista/layout.js`). |
+| Escada de livros de verdade: pilhas em degrau com a **lombada virada para fora**; espelhos pintados como lombadas com título. | BAS11, BAS7, BAS15, BAS18 | Seis pilhas de seis livros da mesma espessura (8/12/16/18/20/24 u), do maior embaixo ao menor em cima, costas alinhadas e frentes recuando 40 u; lombadas com título e altura (`src/clay/set/bookGeometry.js`, `bookMaterial.js`, `src/maps/pista/visual/books.js`). |
+| Livros em espiral e torre de livros com escada encostada. | BAS1, BAS4, BAS6, BAS8, BAS9 | Torre de queda: escada em espiral de ~78 livros encaixados num tubo de papelão grosso (Ø 180 u, 1310 u), 18° por degrau, espessura por trecho para as pranchas caírem exatas em 200/420/600/900/1310 u (`src/maps/pista/layout.js`, `visual/books.js`). |
+| Régua de crescimento: tábua em pé com **numerais grandes pintados**, traços longo/médio/curto e anotações à mão com risquinho na altura; tema de pista de corrida com bandeira quadriculada. | WRG1, WRG4, WRG5, WRG11, WRG15 | Tábua de crescimento de 1400 u ao lado da torre (numerais brancos a cada 100 u, traços a cada 10 u, notas nas cinco alturas); bandeirinha xadrez de papel na chegada do bhop (`src/clay/set/measureMaterials.js`, `visual/art.js`). |
+| Blocos de montar de madeira: faia clara com cantos arredondados, tons variando de bloco para bloco. | AWB1, AWB4, AWB12, AWB17 | Caixas de 57/58/64/66/67/72 u em blocos de faia com a altura em estêncil (`src/clay/set/woodMaterials.js`, `visual/wood.js`). |
+| Obstáculos de fingerboard (a escala do boneco): cunhas fechadas dos lados, caixas com cantoneira, escada de compensado com as **lâminas à mostra**, peças sobre o tapete de corte verde, etiquetas à mão. | CFO4, CFO8, CFO9, CFO11, CFR6, CFR7, CFR19 | Rampas de 15/30/44/46/60° como cunhas de papelão fechadas sobre o tapete de corte, com transferidor de papel colado na lateral; compensado com as lâminas nas bordas na base e nas paredes do wall-jump (`visual/cardboard.js`, `woodMaterials.js`). |
+| Pista de bolinha de papelão: rampas sobre tubos de papel-toalha, montada em cima do tapete de corte. | CMR5, CMR12, CMR15 | Tubo de papelão (kit do set) como pilar e caixa de arquivo como plataforma das rampas (`visual/cardboard.js`). |
+| Túnel de caixas: furos redondos no teto, fendas de respiro, **pisca-pisca por dentro**, interior marrom quente com luz vazando nas emendas; arcos de papelão curvado presos com fita. | COC2, COC25, CBT6, CBT7, CBT13, CBT14 | Três caixas rasas emendadas (60/96/60 u por dentro), furos e fendas, 12 lampadinhas quentes no teto e uma luz prática sem sombra na caixa do meio (`visual/cardboard.js`, `visual/extras.js`, `src/data/studioRigs.js`). |
+| Paredes de papelão de uma face curvadas e tiras em pé mostrando a onda no corte. | CBT12, COC15, COC13 | Paredes finas (2 u) de papelão de uma face — opção nova do material de papelão — em zigue-zague, quina de 20°, curva, vãos de 33/31 u e fileira de 0,5/1/2/4 u (`src/clay/set/paperMaterials.js`, `visual/cardboard.js`). |
+| Parkour: subida entre duas paredes altas, wall-jump num beco estreito, estruturas de compensado com bordas pintadas. | PKG3, PKG6, PKG11, PKC14, PKG19 | Poço de 4 paredes de compensado, cada uma com faixa de cor e número (paredes distintas para a regra de 1 wall-jump por parede); corredor em zigue-zague de painéis alternados sobre um vão (`visual/wood.js`, `src/data/pista.js`). |
+| Ripas de balsa presas com alfinete sobre a planta; a ripa é creme, de fibras longas e ponta felpuda. | BWM1, BWM10, BWM14, BWM16 | Vigas de 32/16/8/4 u de balsa com alfinetes de cabeça colorida nas pontas e uma ripa inclinada a 20° (`visual/wood.js`, `src/clay/set/stationeryGeometry.js`). |
+| Fita métrica e trena: números a cada centímetro, traços nas duas bordas, ponta de metal; a fita solta enrola e torce; fitas antigas amareladas. | TMA2, TMA5, TMA6, TMA9, TMA11, TMA12 | Trena de aço amarela esticada ao longo da faixa de bhop (número a cada 10 u, vermelho a cada 100 u) com o estojo na chegada (`measureMaterials.js`, `stationeryGeometry.js`, `visual/extras.js`). |
+| Lápis sextavado apontado, régua de madeira com bisel e traços, régua escolar, borracha. | PRU1, PRU2, PRU3, PRU15 | Traves dos vãos de slide: régua de madeira, lápis (laca, madeira, grafite, ponteira e borracha), régua de aço e espeto de bambu apoiados em blocos com uma bolota de massinha (`stationeryGeometry.js`, `src/clay/set/paintMaterials.js`). |
+| Impressão na massa: placa aberta no rolo com borda cortada à mão, a marca é uma bacia com **lábio de massa empurrada**, letras carimbadas e borda de furinhos; pegada de pé descalço numa superfície lisa. | CFP1, CFP7, CFP10, CFP19, CIM1, CIM5, CIM8 | Sete placas de massinha (P-E-G-A-D-A-S) com letra carimbada e borda de furos, por um canal de impressão opcional no `ClayMaterial` (relevo com lábio + fundo mais escuro) que a 3.5 reaproveita para as pegadas (`src/clay/ClayMaterial.js`, `visual/clayPlates.js`). |
+| Blockout de level design: leitura por silhueta, grade no chão, rotas coloridas. | LDB9, LDB15, LDB3 | Folha de papel quadriculado com grade de 1 m (100 u) e 20 u na quadra de counter-strafe, metros numerados nas bordas (`measureMaterials.js`). |
+| O set grande é uma ilha de luz no estúdio escuro; luz baixa e quente com sombras longas sobre a bancada. | SSD1, CSD14, DFL5, DFL6, DFL12 | Montagem de luz `pista`: key de tungstênio alta e distante (queda suave de ~2× do centro às bordas), fill frio, rim do norte, luminária acesa no spawn e luz do túnel; sombra estática com mapa ×2 (`src/data/studioRigs.js`). |

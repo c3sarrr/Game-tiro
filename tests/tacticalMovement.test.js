@@ -70,7 +70,10 @@ test('parada: faca a 250 soltando tudo zera em 26 ticks; Shift correndo trava em
 });
 
 test('teto duro: agachando a velocidade segue o teto até 85; o primeiro tick depois do pouso já freia', () => {
-  const p = ticksTo(250).p;
+  // O agachar do CS correndo: sem o slide da 3.4 (sv_slide 0), que tomaria o aperto do Ctrl a 250 u/s.
+  const sv = createSvVars();
+  sv.slide = 0;
+  const p = ticksTo(250, { sv }).p;
   const s = p.state;
   run(p, 1, withButtons(BTN.DUCK, forward));
   near(s.duckFactor, 1 + (DUCK.speedMultiplier - 1) * s.duckAmount, 1e-12);

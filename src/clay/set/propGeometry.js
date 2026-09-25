@@ -152,8 +152,9 @@ export function cardboardTube(radius, height, thickness, { radial = 48 } = {}) {
       const b = a + 1;
       const c = a + 3;
       const d = a + 2;
-      if (side > 0) index.push(a, b, c, a, c, d);
-      else index.push(a, c, b, a, d, c);
+      // Borda de cima (side > 0) com a normal +Y: (dentro i, fora i+1, fora i) no sentido anti-horário visto de cima.
+      if (side > 0) index.push(a, c, b, a, d, c);
+      else index.push(a, b, c, a, c, d);
     }
   }
   const geo = new THREE.BufferGeometry();
@@ -206,13 +207,17 @@ export function twistedWire(curve, radius = 0.7, pitch = 9) {
 
 // ------------------------------------------------------------------ balsa
 
-/** Ripa de balsa ao longo de X: quinas levemente amaciadas, pontas cortadas à mão, leve empeno. */
-export function balsaStick(length, width = 10, height = 6, { seed = 'balsa' } = {}) {
+/**
+ * Ripa de balsa ao longo de X: quinas levemente amaciadas, pontas cortadas à mão, leve empeno. `bow` fixa o empeno no
+ * meio (u; negativo = barriga para baixo, como a ripa comprida apoiada só nas pontas); sem ele, sorteado em ±0,8.
+ */
+export function balsaStick(length, width = 10, height = 6, { seed = 'balsa', bow: fixedBow = null } = {}) {
   const geo = new RoundedBoxGeometry(length, height, width, 2, Math.min(width, height) * 0.06);
   const rng = new RNG(`balsa:${seed}`);
   const cutA = rng.float(-0.12, 0.12);
   const cutB = rng.float(-0.12, 0.12);
-  const bow = rng.float(-0.8, 0.8);
+  const drawn = rng.float(-0.8, 0.8);
+  const bow = fixedBow ?? drawn;
   const p = geo.attributes.position;
   for (let i = 0; i < p.count; i++) {
     let x = p.getX(i);

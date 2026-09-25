@@ -109,6 +109,9 @@ export const SHADOW_LEVELS = Object.freeze({
   ultra: { mapSize: 4096, radius: 5 },
 });
 
+/** Teto do lado do mapa de sombra (px): luzes com `shadowScale` > 1 (a key da pista) não passam disto nem do máximo da GPU. */
+export const SHADOW_MAX_SIZE = 4096;
+
 /** Controle de resolução dinâmica (graphics.adaptiveResolution). */
 export const ADAPTIVE_RESOLUTION = Object.freeze({
   minScale: 0.5, // nunca abaixo de 50% da resolução do preset

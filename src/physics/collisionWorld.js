@@ -23,6 +23,7 @@ export function createTrace() {
     surface: 0,
     body: null,
     triangle: -1,
+    part: -1, // peça do ColliderBuilder
   };
 }
 
@@ -38,6 +39,7 @@ export function copyTrace(src, dst) {
   dst.surface = src.surface;
   dst.body = src.body;
   dst.triangle = src.triangle;
+  dst.part = src.part;
   return dst;
 }
 
@@ -78,6 +80,7 @@ export class CollisionWorld {
     this.skin = skin;
     this.bodies = [];
     this.stats = { sweeps: 0, overlaps: 0, rays: 0, triangles: 0 };
+    this._nextKey = 1; // chave dos corpos neste mundo (addBody)
     // Consulta em andamento, no espaço do corpo atual.
     this._tris = null;
     this._s0x = 0; this._s0y = 0; this._s0z = 0;
@@ -140,7 +143,9 @@ export class CollisionWorld {
     return world;
   }
 
+  /** Põe o corpo no mundo com a chave seguinte: mundos montados na mesma ordem dão as mesmas chaves. */
   addBody(body) {
+    body.key = this._nextKey++;
     this.bodies.push(body);
     return body;
   }
@@ -194,6 +199,7 @@ export class CollisionWorld {
     out.startSolid = false;
     out.body = null;
     out.triangle = -1;
+    out.part = -1;
     out.surface = 0;
     out.normal.set(0, 0, 0);
     out.faceNormal.set(0, 0, 0);
@@ -221,6 +227,7 @@ export class CollisionWorld {
       out.body = body;
       out.triangle = this._tri;
       out.surface = body.surface[this._tri];
+      out.part = body.part[this._tri];
       toWorldDir(body, this._hnx, this._hny, this._hnz, out.normal);
       toWorldPoint(body, this._hpx, this._hpy, this._hpz, out.point);
       const o = this._tri * TRI_STRIDE;

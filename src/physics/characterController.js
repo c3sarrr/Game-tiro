@@ -4,12 +4,14 @@
 // jogador fica de pé em qualquer chão andável que o disco cubra, sobe degrau até sv_stepsize e só alcança a beirada
 // que o pulo alcança (o redondo de baixo da cápsula não afunda na borda nem serve de rampa para subir nela).
 // Opera sobre o estado de movimento do jogador (src/player/movement.js): pés na origem, velocidade, altura da cápsula,
-// chão (normal, superfície, atrito) e `viewOffset` — a subida/descida brusca deste tick que a câmera suaviza.
+// chão (normal, superfície, atrito) e `viewOffset` — a subida/descida brusca deste tick que a câmera suaviza. Guarda
+// também a sonda de parede do wall-jump (src/physics/wallProbe.js, subfase 3.4).
 
 import * as THREE from 'three';
 import { CONTROLLER, HULL } from '../data/movement.js';
 import { SURFACES } from '../data/surfaces.js';
 import { copyTrace, createTrace } from './collisionWorld.js';
+import { WallProbe, createWallHit } from './wallProbe.js';
 
 /** Tira de `v` a componente contra o plano de normal `n` (ClipVelocity do Source); overbounce 1 = deslizar. */
 export function clipVelocity(v, n, out, overbounce) {
@@ -69,6 +71,8 @@ export class CharacterController {
     this._downVel = new THREE.Vector3();
     this._probe = new THREE.Vector3();
     this._alt = new THREE.Vector3();
+    this._start = new THREE.Vector3();
+    this._dest = new THREE.Vector3();
     // Lugar livre "com chão" para a busca de espaço livre (criado uma vez: nada aloca por tick).
     this._hasGround = (p) => this.support(
       p.x, p.z, p.y - CONTROLLER.unstuckGroundDepth, p.y + CONTROLLER.supportTolerance,
@@ -77,6 +81,9 @@ export class CharacterController {
     this.ground = { height: 0, normal: new THREE.Vector3(0, 1, 0), surface: 0 };
     // Último contato que cortou a velocidade (ponto e normal): o r_colisao desenha a normal.
     this.lastContact = { point: new THREE.Vector3(), normal: new THREE.Vector3(), valid: false };
+    // Sonda de parede do wall-jump e o resultado da última consulta.
+    this.walls = new WallProbe(world);
+    this.wallHit = createWallHit();
   }
 
   /** TracePlayerBBox: varre a cápsula do estado `s` (altura atual) de `from` até `to`. */
@@ -147,6 +154,17 @@ export class CharacterController {
     if (tr.startSolid || Math.abs(tr.endpos.y - y) > CONTROLLER.supportTolerance) return false;
     o.y = tr.endpos.y;
     return true;
+  }
+
+  /** Sobe os pés até `dy` u na vertical, até onde a cápsula passar (teto); devolve quanto subiu. */
+  raise(s, dy) {
+    const o = s.origin;
+    this._end.set(o.x, o.y + dy, o.z);
+    const tr = this.trace(o, this._end, s, this.trStep);
+    if (tr.startSolid || tr.endpos.y <= o.y) return 0;
+    const up = tr.endpos.y - o.y;
+    o.y = tr.endpos.y;
+    return up;
   }
 
   /**
@@ -302,6 +320,19 @@ export class CharacterController {
     }
     s.velocity.y = downVel.y;
     this.#viewStep(s, s.origin.y - pos.y, Math.sqrt(upDist), found ? this.ground.normal.y : 1);
+  }
+
+  /**
+   * Deslocamento no chão pelo tick com a velocidade atual (o fim do WalkMove): varre direto; se bater, sobe o degrau
+   * (stepMove); depois gruda no chão. O andar do CS e o slide usam.
+   */
+  groundMove(s, dt) {
+    const start = this._start.copy(s.origin);
+    const dest = this._dest.copy(s.origin).addScaledVector(s.velocity, dt);
+    const tr = this.trace(s.origin, dest, s, this.trFirst);
+    if (tr.fraction === 1) s.origin.copy(tr.endpos);
+    else this.stepMove(s, dt, dest, tr);
+    this.stayOnGround(s, Math.hypot(s.origin.x - start.x, s.origin.z - start.z));
   }
 
   /**

@@ -30,6 +30,8 @@ export class MenuState {
         h('nav.menu-buttons', { 'aria-label': 'Menu principal' },
           h('button.btn-clay.is-primary.is-big', { type: 'button', 'data-autofocus': true, onclick: () => s.states.go('lobby') }, 'Jogar'),
           btn('Sala de testes', () => s.states.go('match', { map: 'testroom', mode: 'livre' })),
+          // Parque de estações da Fase 3 (3.3): os números do movimento com objetos de verdade; `estacao` teleporta.
+          btn('Pista de testes', () => s.states.go('match', { map: 'pista', mode: 'livre' })),
           // Bancada de prova do look de massinha (Fase 2): 20 objetos, painel de luz no Tab, varredura de presets.
           btn('Vitrine de massinha', () => s.states.go('match', { map: 'vitrine', mode: 'livre' })),
           btn('Configurações', () => openSettings(s)),

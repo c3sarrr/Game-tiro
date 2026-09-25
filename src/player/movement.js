@@ -1,16 +1,22 @@
 // Movimento do jogador — porte do PlayerMove/FullWalkMove do CS:GO (cs_gamemovement.cpp sobre o gamemovement.cpp do
 // Source) para Y para cima, com os números do CS:GO (src/data/movement.js). Uma função sobre dados simples,
 // playerMove(estado, comando, ambiente): o mesmo código move o jogador local, a predição do cliente (Fase 9) e os bots
-// (Fase 7) — só o comando muda. O agachar fica em duck.js e os passos em footsteps.js. Única diferença intencional do
-// CS:GO: o pulo mantém a parábola exata da 3.1 (impulso definido, ápice de 57 u em pé; o CS:GO a 64 tick dá 54,65 u).
+// (Fase 7) — só o comando muda. O agachar fica em duck.js e os passos em footsteps.js; o slide (slide.js), o wall-jump
+// (wallJump.js) e o dano de queda (vitals.js) são da subfase 3.4. Única diferença intencional do CS:GO: o pulo mantém
+// a parábola exata da 3.1 (impulso definido, ápice de 57 u em pé; o CS:GO a 64 tick dá 54,65 u).
 
 import * as THREE from 'three';
-import { CONTROLLER, DUCK, HULL, MOVE, STEPS } from '../data/movement.js';
+import { CONTROLLER, DUCK, HULL, MOVE, STEPS, WALLJUMP } from '../data/movement.js';
 import { FREE_CAMERA } from '../data/sandbox.js';
 import { SURFACES } from '../data/surfaces.js';
 import { duck, duckGate } from './duck.js';
 import { firstStepDelay, updateSteps } from './footsteps.js';
 import { BTN } from './moveCmd.js';
+import {
+  SLIDE_END, checkSlideButton, endSlide, slideFriction, slideJump, slideMove, updateSlide,
+} from './slide.js';
+import { fallDamage } from './vitals.js';
+import { checkWallJump, resetWalls, updateWallContact, wallJumpClocks } from './wallJump.js';
 
 export { eyeHeight } from './duck.js';
 
@@ -18,8 +24,6 @@ export const MOVETYPE = Object.freeze({ WALK: 'andar', NOCLIP: 'noclip' });
 
 const _wishVel = new THREE.Vector3();
 const _wishDir = new THREE.Vector3();
-const _dest = new THREE.Vector3();
-const _start = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
 
@@ -58,6 +62,32 @@ export function createMoveState({ position = null } = {}) {
     stepTimer: firstStepDelay(false), // relógio dos passos (ms)
     stepFoot: 0, // pé do próximo passo (0 esquerdo, 1 direito)
     stuck: false,
+    // Slide (slide.js).
+    sliding: false,
+    slideTime: 0, // s desde o começo do slide atual
+    slideAir: 0, // s seguidos no ar durante o slide
+    slideCooldown: 0, // s de recarga que faltam
+    slideExit: false, // saída do slide: o atrito freia até caber no teto do tick, sem o corte duro
+    slideDistance: 0, // u percorridos no plano no slide atual
+    slideStartSpeed: 0, // velocidade no plano no começo do slide (depois do impulso)
+    // Wall-jump (wallJump.js).
+    jumpBuffer: 0, // s que o último aperto do pulo no ar ainda vale
+    wallJumpCooldown: 0, // s até o próximo wall-jump valer
+    wallTime: WALLJUMP.ageMax, // idade (s) do último contato de parede, medida no começo do tick
+    wallNx: 0, // normal no plano do último contato (da parede para o jogador)
+    wallNz: 0,
+    wallPx: 0, // ponto do último contato na parede
+    wallPy: 0,
+    wallPz: 0,
+    wallBody: 0, // chave do corpo de colisão da parede no mundo (0: nenhum)
+    wallPart: -1, // peça do ColliderBuilder
+    wallSurface: 0,
+    wallJumps: 0, // wall-jumps neste voo
+    usedCount: 0, // paredes usadas no voo; as últimas WALLJUMP.maxUsed ficam nos anéis abaixo
+    usedBody: new Int32Array(WALLJUMP.maxUsed),
+    usedPart: new Int32Array(WALLJUMP.maxUsed),
+    usedNx: new Float64Array(WALLJUMP.maxUsed),
+    usedNz: new Float64Array(WALLJUMP.maxUsed),
   };
 }
 
@@ -93,7 +123,43 @@ export function copyMoveState(src, dst) {
   dst.stepTimer = src.stepTimer;
   dst.stepFoot = src.stepFoot;
   dst.stuck = src.stuck;
+  dst.sliding = src.sliding;
+  dst.slideTime = src.slideTime;
+  dst.slideAir = src.slideAir;
+  dst.slideCooldown = src.slideCooldown;
+  dst.slideExit = src.slideExit;
+  dst.slideDistance = src.slideDistance;
+  dst.slideStartSpeed = src.slideStartSpeed;
+  dst.jumpBuffer = src.jumpBuffer;
+  dst.wallJumpCooldown = src.wallJumpCooldown;
+  dst.wallTime = src.wallTime;
+  dst.wallNx = src.wallNx;
+  dst.wallNz = src.wallNz;
+  dst.wallPx = src.wallPx;
+  dst.wallPy = src.wallPy;
+  dst.wallPz = src.wallPz;
+  dst.wallBody = src.wallBody;
+  dst.wallPart = src.wallPart;
+  dst.wallSurface = src.wallSurface;
+  dst.wallJumps = src.wallJumps;
+  dst.usedCount = src.usedCount;
+  dst.usedBody.set(src.usedBody);
+  dst.usedPart.set(src.usedPart);
+  dst.usedNx.set(src.usedNx);
+  dst.usedNz.set(src.usedNz);
   return dst;
+}
+
+/**
+ * Interrompe o slide e esquece o voo (teleporte, morte, volta): o slide acaba com o motivo `interrompido`, sem saída e
+ * sem recarga; paredes usadas, contato, buffer e a espera do wall-jump zeram.
+ */
+export function interruptMoves(s, env) {
+  endSlide(s, env, SLIDE_END.INTERRUPT);
+  s.slideExit = false;
+  s.slideCooldown = 0;
+  resetWalls(s);
+  s.wallJumpCooldown = 0;
 }
 
 /** Teto do item na mão: mín(260, sv_maxspeed, velocidade do item no modo atual). */
@@ -197,6 +263,17 @@ function wishVelocity(s, cmd, out) {
   return out;
 }
 
+/**
+ * Desejo do slide: direção no plano pelo yaw do comando em _wishDir e a fração do analógico (0–1), sem o teto do tick
+ * (o controle lateral do slide é proporcional à velocidade do item).
+ */
+function slideSteer(cmd) {
+  _fwd.set(-Math.sin(cmd.yaw), 0, -Math.cos(cmd.yaw));
+  _right.set(Math.cos(cmd.yaw), 0, -Math.sin(cmd.yaw));
+  _wishVel.set(0, 0, 0).addScaledVector(_fwd, cmd.forward).addScaledVector(_right, cmd.side);
+  return Math.min(1, wishDirection(_wishVel));
+}
+
 /** Direção do desejo em _wishDir; devolve o módulo. */
 function wishDirection(vel) {
   const speed = vel.length();
@@ -207,26 +284,24 @@ function wishDirection(vel) {
 
 /**
  * WalkMove: acelera no plano (Accelerate do CS:GO), corta a velocidade no teto do tick — o teto duro do CS:GO, que faz
- * andar, agachar e pousar frearem na hora —, desliza (ou sobe o degrau) e gruda no chão.
+ * andar, agachar e pousar frearem na hora —, desliza (ou sobe o degrau) e gruda no chão. Na saída do slide o corte duro
+ * vira "a velocidade só cai" (o atrito freia) até caber no teto.
  */
 function walkMove(s, cmd, env) {
-  const { controller: ctl, dt } = env;
   const wishSpeed = wishDirection(wishVelocity(s, cmd, _wishVel));
   s.velocity.y = 0;
+  const before = s.slideExit ? Math.hypot(s.velocity.x, s.velocity.z) : 0;
   accelerate(s, _wishDir, wishSpeed, cmd, env);
   s.velocity.y = 0;
+  const cap = s.slideExit ? Math.max(s.maxSpeed, before) : s.maxSpeed;
   const speed = s.velocity.length();
-  if (speed > s.maxSpeed) s.velocity.multiplyScalar(s.maxSpeed / speed);
+  if (speed > cap) s.velocity.multiplyScalar(cap / speed);
+  if (s.slideExit && s.velocity.length() <= s.maxSpeed) s.slideExit = false;
   if (s.velocity.length() < CONTROLLER.minSpeed) {
     s.velocity.set(0, 0, 0);
     return;
   }
-  _start.copy(s.origin);
-  _dest.copy(s.origin).addScaledVector(s.velocity, dt);
-  const tr = ctl.trace(s.origin, _dest, s, ctl.trFirst);
-  if (tr.fraction === 1) s.origin.copy(tr.endpos);
-  else ctl.stepMove(s, dt, _dest, tr);
-  ctl.stayOnGround(s, Math.hypot(s.origin.x - _start.x, s.origin.z - _start.z));
+  env.controller.groundMove(s, env.dt);
 }
 
 /** AirMove: no ar só o air-accelerate controla (desejo pelo teto do tick) e a cápsula desliza pelas superfícies. */
@@ -241,9 +316,9 @@ function airMove(s, cmd, env) {
  * CheckJumpButton: pula do chão, com o botão solto no tick anterior (ou sv_autobunnyhopping). Sem
  * sv_enablebunnyhopping, a velocidade 3D acima de 1,1 × 260 é cortada antes de sair do chão. Impulso definido (a
  * parábola exata da 3.1) × fator da superfície × (1 − stamina/100) e a meia gravidade do tick; a stamina soma
- * sv_staminajumpcost × impulso.
+ * sv_staminajumpcost × impulso. No slide, sai com o embalo e o slide acaba (slideJump).
  */
-function checkJumpButton(s, env) {
+function checkJumpButton(s, cmd, env) {
   const { sv, dt } = env;
   if (!s.onGround) return;
   if ((s.oldButtons & BTN.JUMP) && !sv.autobunnyhopping) return;
@@ -260,12 +335,13 @@ function checkJumpButton(s, env) {
   s.velocity.y = impulse - sv.gravity * 0.5 * dt;
   s.stamina = Math.min(sv.staminamax, Math.max(0, s.stamina + sv.staminajumpcost * impulse));
   env.events.push({ type: 'jump', surface, speed, audible: speed > MOVE.jumpSoundSpeed });
+  if (s.sliding) slideJump(s, cmd, env);
 }
 
 /**
  * CheckFalling: pouso do tick — no chão com velocidade de queda (do começo do tick) positiva. Quem pousou de dentro do
- * agachar (duckbug) já zerou a queda no passo do atrito e não conta. Soma a stamina do pouso; pouso pesado atrasa o
- * próximo passo.
+ * agachar (duckbug) já zerou a queda no passo do atrito e não conta (nem toma dano, como no CS). Soma a stamina do
+ * pouso; pouso pesado atrasa o próximo passo; o evento leva o dano de queda (o PlayerPawn aplica na vida).
  */
 function checkFalling(s, env) {
   if (!s.onGround || s.fallVelocity <= 0) return;
@@ -275,7 +351,7 @@ function checkFalling(s, env) {
   if (fall >= STEPS.roughLandSpeed) s.stepTimer = STEPS.roughLandDelay;
   env.events.push({
     type: 'land', speed: fall, surface: s.groundSurface,
-    audible: fall > STEPS.landAudibleSpeed, heavy: fall >= STEPS.roughLandSpeed,
+    audible: fall > STEPS.landAudibleSpeed, heavy: fall >= STEPS.roughLandSpeed, damage: fallDamage(fall, sv),
   });
   s.fallVelocity = 0;
 }
@@ -310,10 +386,11 @@ function noclipMove(s, cmd, dt) {
 }
 
 /**
- * Um tick de movimento (PlayerMove + FullWalkMove do CS:GO). `env`: { controller, sv, dt, item: {speed, slowSniper}
- * (velocidade do item na mão no modo atual e se é sniper lenta com zoom), events: [] }. Eventos do tick em env.events:
- * step {foot, x, y, z, surface, volume, speed, audible}, jump {surface, speed, audible}, land {speed, surface, audible,
- * heavy}, duck, unduck.
+ * Um tick de movimento (PlayerMove + FullWalkMove do CS:GO, com o slide e o wall-jump da 3.4). `env`: { controller, sv,
+ * dt, item: {speed, slowSniper} (velocidade do item na mão no modo atual e se é sniper lenta com zoom), events: [] }.
+ * Eventos do tick em env.events: step {foot, x, y, z, surface, volume, speed, audible}, jump {surface, speed, audible},
+ * land {speed, surface, audible, heavy, damage}, duck, unduck, slide {phase: 'start', speed, from, surface} e
+ * {phase: 'end', reason, time, distance, entrySpeed, exitSpeed}, walljump {nx, nz, surface, speed, count, body, part}.
  */
 export function playerMove(s, cmd, env) {
   const { controller: ctl, sv, dt, events } = env;
@@ -324,6 +401,7 @@ export function playerMove(s, cmd, env) {
     s.baseSpeed = s.maxSpeed = baseSpeedOf(env);
     s.walkFactor = s.staminaFactor = s.duckFactor = 1;
     reduceStamina(s, sv, dt);
+    interruptMoves(s, env);
     noclipMove(s, cmd, dt);
     s.onGround = false;
     s.fallVelocity = 0;
@@ -331,29 +409,49 @@ export function playerMove(s, cmd, env) {
     s.oldButtons = cmd.buttons;
     return;
   }
+  // 1) Teto do tick, portão do agachar, andar e stamina.
   checkParameters(s, cmd, env);
+  // 2) Relógios: stamina, recarga do slide, buffer do pulo e espera do wall-jump.
   reduceStamina(s, sv, dt);
+  s.slideCooldown = Math.max(0, s.slideCooldown - dt);
+  wallJumpClocks(s, dt);
+  // 3) Desprender; 4) queda do começo do tick; 5) passos (parados no slide).
   s.stuck = !ctl.resolvePenetration(s);
   if (!s.onGround) s.fallVelocity = -s.velocity.y;
   updateSteps(s, env);
+  // 6) Slide: soltar o Ctrl encerra; o aperto correndo no chão começa (depois do portão, antes da transição).
+  checkSlideButton(s, cmd, env);
+  // 7) Agachar (no slide a cápsula já está agachada e fica).
   duck(s, env);
   const startY = s.origin.y; // pés no começo do movimento: pouso na beirada que a base atravessar descendo
-  // Meia gravidade antes e meia depois do movimento: a posição segue a parábola exata.
+  // 8) Meia gravidade antes e meia depois do movimento: a posição segue a parábola exata.
   s.velocity.y -= sv.gravity * 0.5 * dt;
-  // O pulo vem antes do atrito: pular no tick seguinte ao pouso não perde velocidade (bunny hop).
-  if (cmd.buttons & BTN.JUMP) checkJumpButton(s, env);
+  // 9) Pulo: no chão, o do CS — antes do atrito, então pular no tick seguinte ao pouso não perde velocidade (bunny
+  // hop); no ar, o wall-jump.
+  if (s.onGround) {
+    if (cmd.buttons & BTN.JUMP) checkJumpButton(s, cmd, env);
+  } else checkWallJump(s, cmd, env);
+  // 10) Atrito: o do slide ou o do CS.
   if (s.onGround) {
     s.velocity.y = 0;
     s.fallVelocity = 0;
-    friction(s, sv, dt);
+    if (s.sliding) slideFriction(s, sv, dt);
+    else friction(s, sv, dt);
   }
   ctl.checkVelocity(s);
-  if (s.onGround) walkMove(s, cmd, env);
-  else airMove(s, cmd, env);
+  // 11) Movimento: slide ou andar no chão; no ar, air-accelerate e deslize.
+  if (s.onGround) {
+    if (s.sliding) slideMove(s, _wishDir, slideSteer(cmd), env);
+    else walkMove(s, cmd, env);
+  } else airMove(s, cmd, env);
+  // 12) Chão, limites e a outra meia gravidade.
   ctl.categorizePosition(s, startY);
   ctl.checkVelocity(s);
   s.velocity.y -= sv.gravity * 0.5 * dt;
   if (s.onGround) s.velocity.y = 0;
+  // 13) Fim do slide; 14) sonda de parede; 15) pouso.
+  updateSlide(s, env);
+  updateWallContact(s, env);
   checkFalling(s, env);
   s.oldButtons = cmd.buttons;
 }

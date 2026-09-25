@@ -49,6 +49,10 @@ O servidor de desenvolvimento só atende GET/HEAD e nunca serve arquivos ocultos
   `Game tiro/tools/dev-server.mjs` (`massacre-dev` na 5173; `massacre-dev-auto` pega uma porta livre pela variável
   PORT quando a 5173 já está em uso). Emular largura < 768 px liga a emulação de celular (UA Android + toque) e a
   detecção de hardware classifica como "mobile" — use 698×392 só para inspeção visual e ≥ 1280 para medir.
+- Painel do navegador (achado na 3.4): emular um tamanho maior que o painel escala a imagem e desvia os cliques do
+  `computer` — para clicar, use o tamanho do próprio painel. O `pointerlockerror` do pedido de captura pode chegar
+  depois do carregamento, desfazer a captura liberada por script e abrir a pausa: o ajudante do roteiro de verificação
+  da 3.4 (`__t.unpause()`, em `docs/phases/phase-3.4-plan.md`, Tarefa 8) fecha a pausa e libera de novo.
 - Máquina de desenvolvimento: NVIDIA RTX 2070 (não Iris Xe). Metas de GPU integrada são estimadas: o quadro do
   preset Alto em 1080p precisa ficar em ~3 ms nesta placa para caber em 16,6 ms numa Iris Xe (~5× mais lenta).
   Cuidado ao ler o cronômetro de GPU: a etapa "cena" inclui a espera da GPU pelo envio dos draws (~13 µs por draw
@@ -59,6 +63,20 @@ O servidor de desenvolvimento só atende GET/HEAD e nunca serve arquivos ocultos
   qualidade de sombra muda ou o contexto volta (`render.invalidateShadows()` força). Funciona porque o passe de
   sombra usa a profundidade padrão do three (sem o boil da massinha): numa cena parada o mapa é igual quadro a
   quadro. Mapas com coisas que se movem (bonecos, props destrutíveis) ficam com a sombra dinâmica.
+
+## Ferramentas externas planejadas (decisões do Cesar, 2026-09-25)
+
+- **Higgsfield:** entra em fases futuras, não agora. Momentos previstos: arte conceitual das facções e bonecos antes
+  da Fase 5 (referência visual para modelar) e trailer/material de divulgação na Fase 13 ou no lançamento. Quem
+  estiver conduzindo a fase avisa o Cesar quando chegar a hora; nada do Higgsfield entra no código sem ele pedir.
+- **Blender:** decisão pendente. A regra 4 do `CLAUDE.md` ("tudo procedural, sem GLB") continua valendo. Rever no
+  início da Fase 4: a proposta é liberar modelos autorais feitos no Blender para armas (Fase 4), personagens e
+  animações (Fase 5) e props únicos (Fase 6), mantendo procedural como padrão. A Fase 3 não usa Blender.
+- **Massinha saindo ao levar tiro:** já está na spec (respingos e amassados na Fase 4; dano e morte em pedaços que
+  grudam no chão na Fase 5). Detalhar nessas fases: pedaços na cor do boneco saindo do ponto de impacto, grudando
+  em parede/chão, e amassado no corpo onde o tiro acertou.
+- **Subtick (estilo CS2):** a considerar na Fase 9 — carimbar o instante do clique entre ticks e usar no lag
+  compensation do host. Não está na spec ainda; adicionar se o Cesar aprovar.
 
 ## Fase 1 — Fundação do motor ✅
 
@@ -553,10 +571,208 @@ dano de queda (3.4); o áudio dos passos (Fase 12) e a audição dos bots (Fase 
 Git: nada commitado. A 3.1 e a 3.2 estão juntas na árvore de trabalho da branch `fase-3.1`, esperando o pedido de
 commit.
 
-### Próxima: Subfase 3.3 — Pista de testes
+### Subfase 3.3 — Pista de testes ✅ (2026-09-25)
 
-Plano em `docs/phases/phase-3.md` (seção 3.3): pesquisa no Pinterest antes do visual (moodboard item 11) e o mapa
-`pista` com o kit e os materiais do set — faixa de counter-strafe com grade de 1 m, escadas de 8/12/16/18/20/24 u,
-rampas de 15/30/44/46/60°, caixas de 57/64/72 u, poço e paredes em zigue-zague para wall-jump, vãos de slide, torre
-de queda com marcas de altura, faixa longa de bhop, vigas estreitas, paredes finas, túnel baixo e placas de massinha
-para as pegadas; colisão com o `ColliderBuilder`, luz própria e acesso pelo menu, lobby e console.
+Pesquisa antes do visual: 17 boards do Pinterest (330 pins) e o "Mapper's Reference" do CS:GO, com a observação e a
+decisão de cada peça no item 11 de `docs/art/moodboard.md` (folha de contato regenerada). Desenho aprovado seção por
+seção em `docs/phases/phase-3.md` (seção 3.3); plano executado: `docs/phases/phase-3.3-plan.md` (validado tarefa por
+tarefa numa cópia limpa antes da execução; os blocos de código são a versão final, a mesma verificada no navegador).
+
+O mapa `pista` é um parque de 12 estações num compensado de 5,6 × 4 m (1 u = 1 mm real) no chão escuro do estúdio,
+cercado por caixas de papelão de parede dupla, cada estação num lote demarcado com fita crepe e uma plaquinha em "A":
+1 counter-strafe (papel quadriculado de plotter com grade de 20/100 u, faixa vermelha e pilares de faia); 2 escadas de
+livros (6 pilhas de 8 a 24 u com lombadas e títulos); 3 rampas (caixa de arquivo e cunhas de 15 a 60°, transferidores
+de papel); 4 caixas de faia com a altura em estêncil (57/58/64/66/67/72 u); 5 wall-jump (poço de compensado com as
+paredes numeradas e o zigue-zague de painéis — números provisórios da 3.4); 6 vãos de slide (régua, lápis, régua de aço
+e espeto a 70/64/58/55 u) e o gabarito de portais 73/72/55/54 u; 7 torre de queda (tubo de papelão enrolado com a
+espiral de 78 livros, pranchas em 200/420/600/900/1310 u, alvos e a tábua de crescimento); 8 bhop (4,8 m de kraft com a
+trena amarela esticada do zero na largada); 9 vigas de balsa de 32 a 4 u com alfinetes; 10 paredes de papelão de uma
+face (0,5 a 4 u, fendas de 33 e 31 u, zigue-zague, quina e curva); 11 túnel de caixas rasas (60/96/60 u) com
+pisca-pisca; 12 placas de massinha com P-E-G-A-D-A-S carimbado. Na praça do spawn, a planta da pista desenhada a lápis a
+partir do próprio layout, num cavalete, sob a luminária de mesa acesa. Luz própria (`pista`): key alta com a única
+sombra (estática), fill, rim e as luzes práticas da luminária e do túnel.
+
+Decisões tomadas na implementação (detalhes em `docs/phases/phase-3.md`, "Ajustes feitos na implementação"):
+- **Um layout puro para tudo**: as mesmas peças viram colisão, estações, visual e os testes do Node.
+- **Lotes em `BatchedMesh` por material** (31 desenhos estáticos para 735 peças); a cor de cada peça multiplica o
+  material, então os materiais do set terminam o trecho de superfície com `col * diffuseColor.rgb`.
+- **Arte em atlas por mapa**: etiquetas (alfa lido pela fita), lombadas (RGB com título, etiqueta e caneta), desenhos
+  (cor + cobertura em DataTexture, sem franja escura nos mipmaps) e a planta (papel inteiro).
+- **Impressão no `ClayMaterial`** (define própria, valores trocados no lugar): as letras carimbadas agora, as pegadas da
+  3.5 pelo mesmo caminho.
+- **Spawn no fundo da praça** e luminária mais baixa; níveis de luz abaixo dos da sala (compensado claro); poeira numa
+  caixa baixa sobre a base.
+
+Arquivos criados:
+- `src/data/pista.js` — todos os números da pista, a aparência (`look`) e os pontos de teleporte.
+- `src/maps/pista/` — `pieces.js`, `layout.js`, `layoutGround.js`, `layoutAdvanced.js`, `layoutTower.js`,
+  `layoutCourse.js`, `colliders.js`, `index.js` e `visual/` (`batch`, `common`, `floor`, `books`, `wood`, `cardboard`,
+  `art`, `plan`, `extras`, `clayPlates`, `index`).
+- `src/maps/stations.js` (estações de mapa), `src/debug/stationCommands.js` (`estacao`), `src/debug/jumpMeter.js`.
+- `src/clay/set/` — `bookGeometry.js`, `bookMaterial.js`, `stationeryGeometry.js`, `measureMaterials.js`,
+  `paintMaterials.js`, `printMaterials.js`.
+- Testes: `pistaLayout` (14), `pistaMovement` (10), `pistaFuzz` (2), `jumpMeter` (7), `pistaGeometry` (5),
+  `pistaMaterials` (3), `pistaRig` (3), `stationCommands` (3).
+- `docs/phases/phase-3.3-plan.md`.
+
+Arquivos alterados:
+- `src/clay/set/boardGeometry.js` (caixa com abas curtas e sem fundo, recorte com furos, tubo enrolado),
+  `propGeometry.js` (borda do tubo, empeno fixo da balsa), `paperMaterials.js` (papelão tingível, uma face, tubo
+  enrolado, fita com etiquetas), `woodMaterials.js` (faia, compensado), `labelAtlas.js` (letra à mão reaproveitável),
+  `index.js` (fábricas novas); `src/clay/ClayMaterial.js` (impressão).
+- `src/data/studioRigs.js` (montagem `pista`), `src/render/studio/studioRig.js` (foco da sombra, poeira em caixa),
+  `environment.js` (sala com tamanho), `dust.js` (caixa), `fixtures.js` (`deskLampBase`), `src/data/qualityPresets.js`
+  + `src/render/renderSystem.js` (teto de 4096 no mapa de sombra), `src/render/dispose.js` (`BatchedMesh`).
+- `src/maps/index.js`, `src/maps/registry.js` (`stations`), `src/modes/matchState.js` (medidor de salto, teleporte que
+  interrompe o voo, dica das estações), `src/debug/showPos.js` (linhas de salto e bhop), `movementCommands.js`
+  (`cl_salto_reset`), `commands.js` (`estacao`), `src/ui/sandboxHud.js` (dica), `src/ui/menuState.js` (botão).
+
+Como testar:
+1. `npm test` → 213 testes passando (~4,4 s).
+2. `npm run dev` → **Pista de testes** no menu (ou `map pista` / `map treino` no console; o lobby lista o mapa).
+3. Console: `estacao` lista as 12 estações e os pontos; `estacao 7 900` (prancha de 900 da torre), `estacao bhop`,
+   `estacao gabarito`, `estacao tunel meio`, `estacao caixas 57`. `cl_showpos 1` mostra o último salto (distância,
+   ápice, tempo, queda, pouso), os recordes e a série de bhop; `cl_salto_reset` zera.
+
+Medições (Node e navegador):
+- Movimento na pista (testes): degraus de 8/12/16/18 u sobem e 20/24 não; rampas de 15/30/44° sobem e 46/60°
+  escorregam; pulo em pé alcança 57 e não 58, agachado 64 e 66 e não 67 nem 72; portais 73/72 em pé e 55/54 agachado;
+  túnel 60/96; fendas 33/31; viga de 4 u; pousos exatos nas pranchas; 10 min simulados por estação sem penetração e
+  idênticos bit a bit.
+- Medidor no navegador (projeto real): pulo parado com ápice 57,0 em 0,75 s e pouso a 286 u/s; queda da prancha de 420
+  até o kraft da faixa de bhop com queda de 419,7 u e pouso a 806 u/s; 8 pulos seguidos correndo com a faca: 1359 u em
+  5,55 s, média 245 u/s.
+- Desempenho (Alto, 1920 × 1080): 31 desenhos estáticos, 285 mil triângulos no total, colisão com 3532; spawn 59 draws,
+  156 mil triângulos no quadro, GPU ~4,5 ms; vista geral 295 mil triângulos, 5,3 ms; dentro das estações 3,0–3,6 ms (a
+  sala de testes: 3,3 ms). Montagem ~1,5 s (primeira vez numa máquina, ~20 s compilando os shaders novos).
+- Memória: menu com 2 geometrias / 34 texturas / 25 programas nas três saídas; pista com 42 / 80 / 46 nas três
+  entradas; heap JS voltando ao do menu depois da coleta.
+- Console do navegador sem erros do jogo; vitrine e sala de testes sem mudança de comportamento.
+
+Checklist da subfase (o aceite detalhado está em `docs/phases/phase-3.md`):
+- [x] Pesquisa no Pinterest registrada (item 11 do moodboard, folha de contato regenerada).
+- [x] Mapa `pista` com as 12 estações nos números do desenho, no menu, no lobby e no console; `estacao` leva a cada
+      estação e ponto.
+- [x] Visual conferido contra o moodboard: set de stop-motion com objetos de verdade na escala do boneco.
+- [x] Medidor de salto e queda no `cl_showpos`.
+- [x] 213 testes passando (47 novos); sem erros do jogo no console; sem vazamento em 3 ciclos menu ↔ pista; draws e
+      triângulos dentro das metas e a GPU medida (acima da meta de ~3,3 ms nas vistas da base inteira, anotado);
+      arquivos abaixo de 600 linhas (o maior, `ClayMaterial.js`, com 554); números em `src/data/`.
+
+Fica para as outras fases, como no desenho: os números das estações 5 e 6 (a 3.4 ajusta só os dados), a câmera de
+stop-motion no tripé e os equipamentos extras de borda (Fase 6), as pegadas nas placas (3.5, pelo canal de impressão) e
+a passada de desempenho da GPU nas vistas da base inteira (Fase 6).
+
+Git: nada commitado. A 3.1, a 3.2 e a 3.3 estão juntas na árvore de trabalho da branch `fase-3.1`, esperando o pedido
+de commit.
+
+### Subfase 3.4 — Slide, wall-jump e dano de queda ✅ (2026-09-25)
+
+Desenho aprovado seção por seção em `docs/phases/phase-3.md` (seção 3.4, com os ajustes feitos na implementação);
+plano executado: `docs/phases/phase-3.4-plan.md` (validado tarefa por tarefa numa cópia limpa antes da execução — os
+testes novos falham antes e passam depois em cada tarefa, 213 → 215 → 219 → 240 → 245 → 249 → 251 → 255 — e executado
+no projeto pelo mesmo roteiro; os blocos e os pares reproduzem exatamente a versão verificada no navegador).
+
+O jogador ganha o slide (Ctrl correndo a ≥ 80% da velocidade do item: impulso até 1,2 ×, até 0,6 s segurando, atrito
+baixo, cápsula agachada na hora, recarga de 1 s, saída sem parada seca, pulo com o embalo), o wall-jump (no ar, encostado
+numa parede ainda não usada no voo, o pulo chuta para onde ele olha — espelhado na parede e sempre ≥ 30° para fora —; a
+mesma parede só volta a valer depois do chão; buffer de 0,15 s, tolerância de 0,12 s, espera de 0,35 s) e o dano de
+queda do CS:GO sobre o limite seguro da spec (nada até 420 u, fatal a 1413,373 u/s de pouso), com a vida mínima: vida
+100, colete lido do `Loadout` (não reduz queda), `god`, acumulador de dano fracionário, morte com a câmera do morto
+(desce e tomba) e a etiqueta da causa, e a volta em 2 s no ponto de volta (o último teleporte do console que se
+sustentou, senão o spawn); cair do set mata. Na pista, as estações 5 e 6 e a torre ganham os números do movimento pronto:
+poço de 144 × 144 × 224 u que só sai com as 4 paredes, zigue-zague de 4 painéis de 136 u (vão de 544 u), faixa de slide
+com linha de largada, traves a 32/60/88/116 u e marcas de 50 em 50 u, e as anotações de dano na tábua de crescimento.
+
+Decisões tomadas na implementação (detalhes em `docs/phases/phase-3.md`, "Ajustes feitos na implementação"):
+- **Tudo puro dentro do `playerMove`** (abordagem A da 3.2), na ordem do tick do desenho; a vida é um módulo puro que o
+  `PlayerPawn` aplica a partir do evento de pouso.
+- **"A mesma parede" = mesma peça do `ColliderBuilder` no mesmo corpo** (com 45° de tolerância); o corpo é a chave dada
+  pelo `CollisionWorld` na ordem de entrada (o `id` global quebrava o determinismo).
+- Refinamentos achados nos testes: o slide não começa com o pulo apertado (Ctrl + Espaço segue o pulo agachado do CS); o
+  pulo do slide com o Ctrl seguro sobe os pés 9 u; o buffer do pulo só arma no ar; na saída do slide a velocidade só
+  cai; a idade do contato de parede anda na sonda.
+- **Achados no navegador e corrigidos com teste**: um `setpos` para baixo do set prendia o jogador numa morte a cada 2 s
+  (agora o ponto de volta que não se sustenta sai — `src/modes/returnPoint.js`); as anotações da tábua de crescimento
+  estavam com a base espelhada desde a 3.3 e não apareciam de fora (agora voltadas para fora, com teste de orientação).
+
+Arquivos criados:
+- `src/player/slide.js`, `src/player/wallJump.js`, `src/player/vitals.js`, `src/physics/wallProbe.js`,
+  `src/data/vitals.js`, `src/debug/vitalsCommands.js` (`kill`, `hurtme`), `src/modes/returnPoint.js`.
+- Testes: `wallProbe` (4), `slide` (9), `wallJump` (8), `vitals` (8), `returnPoint` (4).
+- `docs/phases/phase-3.4-plan.md`.
+
+Arquivos alterados:
+- `src/data/movement.js` (`sv_slide*`, `sv_walljump*`, `sv_falldamage_scale`, `SLIDE`, `WALLJUMP`, `FALL`),
+  `src/data/pista.js` (estações 5, 6 e 7).
+- `src/physics/colliders.js` (peça por triângulo), `collisionBody.js`, `collisionWorld.js` (peça no trace, chave do
+  corpo), `characterController.js` (sonda, `raise`, `groundMove`).
+- `src/player/movement.js` (estado novo, ordem do tick, `interruptMoves`, dano no pouso), `duck.js` (`snapDuck`),
+  `footsteps.js` (sem passos no slide), `playerPawn.js` (vida, morte, volta, eventos), `telemetry.js` (marcas),
+  `src/core/events.js` (slide, wall-jump, dano, morte, volta).
+- `src/modes/matchState.js` (vida no HUD, morte e volta, cair do set), `src/ui/sandboxHud.js` + `styles/hud.css`
+  (vida, "−n", etiqueta da morte, dicas).
+- `src/debug/showPos.js`, `jumpMeter.js`, `speedGraph.js`, `physicsDebug.js`, `commands.js` + `styles/debug.css`.
+- `src/maps/pista/pieces.js`, `colliders.js` (nome de peça), `layoutAdvanced.js` (estações 5 e 6), `layoutTower.js`
+  (anotações).
+- Testes que ganharam casos: `movementData`, `tacticalMovement`, `movementFuzz`, `playerPawn`, `pistaLayout`,
+  `pistaMovement`, `pistaFuzz`, `jumpMeter`.
+
+Como testar:
+1. `npm test` → 255 testes passando (~9 s).
+2. `npm run dev` → **Pista de testes**. Slide: `estacao slide faixa`, correr (W) e apertar Ctrl na linha de largada —
+   passa sob a régua, o lápis, a régua de aço e o espeto; em pé bate na régua. Wall-jump: `estacao walljump poco`,
+   entrar pela porta, pular numa parede e, no ar encostado nela, apertar Espaço olhando para a próxima (4 paredes → a
+   prancha de saída); `estacao walljump ziguezague` para os painéis. Queda: `estacao torre 600` e sair andando (−26 no
+   HUD); `estacao torre 1310` (morte e volta na prancha em 2 s).
+3. Console: `kill`, `hurtme 26`, `god`, `give colete`, `cl_showpos 1` (vida, slide, parede, salto com wall-jumps e dano;
+   gráfico com a faixa do slide e as marcas do wall-jump), `r_colisao 1` (o contato de parede em laranja no ar),
+   `sv_slide 0`, `sv_walljump 0`, `sv_falldamage_scale 0`, `sv_slide_speed`, `sv_slide_time`, `sv_slide_cooldown`,
+   `sv_slide_friction`, `sv_walljump_up`, `sv_walljump_maxspeed`, `sv_reset`. A sala de testes tem a mesma vida, morte e
+   volta.
+
+Medições (Node e navegador):
+- Slide (testes): faca 300 → 204,7 u/s em 0,61 s (39 ticks) e 151,2 u; AK 258 → 176,1 u/s e 130,0 u; saída de 205 a 85
+  u/s em ~11 ticks; pulo no slide com o teto de 286 u/s e os pés +9 com o Ctrl seguro.
+- Wall-jump (testes): vertical 289,41 u/s (+52,35 u), piso no item e teto de 286; buffer de 9 ticks, tolerância de 0,12
+  s, subida máxima 220,2 u/s, espera de 0,35 s; na pista, o poço não sai com 3 paredes em 144 tentativas (ápice ~205 u)
+  e sai com as 4 (pés a 230,03 u); o zigue-zague passa com a faca e com a AK e sem wall-jump cai no vão.
+- Queda (testes, do repouso): 200 → 0, 420 → 0, 430 → 0,88, 600 → 26,15, 900 → 61,95, 1200 → 93,54, 1250 → 99,85,
+  1310 → 104,06; as pranchas da torre saindo andando dão 0, 0, 25,1, 63,0 e 105.
+- Navegador (projeto real, entrada pelo `InputManager`): slide na faixa 151,2 u em 0,61 s, 300 → 205 u/s, sob as quatro
+  traves; poço com as 4 paredes: ápice 253 u e de pé na prancha a 230,03 u; zigue-zague com a AK (folga de 38,7 u na
+  borda de B) e com a faca (136,7 u), 4 wall-jumps cada; prancha de 600 andando: pouso a 968,75 u/s, dano 25,1 com colete
+  100 (o colete não reduz), "vida 75 · colete 100" e "−25"; prancha de 1310 correndo: dano 105,1, "Você se esborrachou",
+  câmera baixa e tombada, volta na prancha em 2,0 s com vida 100; `kill` → "Desistiu" e volta; `setpos` abaixo do set:
+  uma morte ("Caiu do set") e volta no spawn, sem repetir; queda de 2000 u: morte e volta no spawn; na sala, `setpos` e
+  `kill` na mesma chamada → volta no ponto; anotações da torre legíveis na tábua.
+- Pista: 31 desenhos estáticos, 288 mil triângulos (3.3: 285 mil), colisão com 3532 triângulos.
+- Memória: menu com 2 geometrias / 33 texturas / 20 programas nas três saídas; pista com 42 / 79 / 41 nas três
+  entradas; ouvintes de `player:*` zerados no menu; heap JS de volta a ~16 MB depois da coleta.
+- Console do navegador sem erros do jogo.
+
+Checklist da subfase (o aceite detalhado está em `docs/phases/phase-3.md`):
+- [x] Slide: até 0,6 s, soltar encerra, passa sob as traves, rampa acelera, recarga de 1 s, fim sem parada seca.
+- [x] Wall-jump: o poço exige as 4 paredes, o zigue-zague passa, a mesma parede só depois do chão, tolerância e buffer.
+- [x] Dano de queda: 420 u seguro, curva pela razão do CS:GO, 1310 fatal, colete não reduz, `god` e acumulador.
+- [x] Morte e volta em 2 s na sala e na pista; cair do set mata.
+- [x] `cl_showpos`, medidor, gráfico, `r_colisao`, `sv_*` e HUD com a vida funcionando.
+- [x] 255 testes passando (42 novos, com os 10 min simulados e o determinismo); sem erros do jogo no console; sem
+      vazamento em 3 ciclos menu ↔ pista; arquivos abaixo de 600 linhas (o maior tocado, `collisionWorld.js`, com 587);
+      números em `src/data/`; conferido no navegador com o projeto real.
+
+Fica para as outras fases, como no desenho: a câmera no slide e no wall-jump e o squash & stretch no pouso (3.5); o som
+do pouso, do slide e do wall-jump (Fase 12); o colete contra bala, explosão e faca (Fase 4); a proteção de 1,5 s depois de
+nascer (Fase 8); os links de navmesh de slide e wall-jump para os bots (Fase 7); o HUD de massinha (Fase 10) e a morte
+por amassamento (Fase 5).
+
+Git: nada commitado. A 3.1, a 3.2, a 3.3 e a 3.4 estão juntas na árvore de trabalho da branch `fase-3.1`, esperando o
+pedido de commit.
+
+### Próxima: Subfase 3.5 — Sensação e aceite da Fase 3
+
+Plano em `docs/phases/phase-3.md` (seção 3.5): head-bob, inclinação ao andar de lado, no slide e no wall-jump, mergulho
+no pouso com mola (intensidade na seção "Conforto", anulados por "reduzir movimento"); squash & stretch do corpo no pouso
+e no pulo, animado "em dois"; pegadas nas placas de massinha pelo canal de impressão do `ClayMaterial`, esmaecendo em
+~20 s. Depois, o aceite da Fase 3: 10 min de jogo na pista sem atravessar parede (manual + varredura aleatória),
+counter-strafe medido, slide e wall-jump fluidos, FPS e memória conferidos e o relatório final da fase.

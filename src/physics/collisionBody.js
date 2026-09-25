@@ -1,6 +1,7 @@
 // Corpo de colisão: os triângulos de um ColliderBuilder com um BVH (three-mesh-bvh, divisão SAH) e uma matriz rígida
 // opcional (props que se mexem, paredes que surgem). Depois do build, os triângulos são copiados na ordem final do
-// BVH para arrays planos em precisão dupla: a fase estreita lê deles direto, sem objetos por triângulo.
+// BVH para arrays planos em precisão dupla: a fase estreita lê deles direto, sem objetos por triângulo. Cada triângulo
+// guarda o material de superfície e a peça do builder (o wall-jump conta cada peça como uma parede).
 
 import * as THREE from 'three';
 import { MeshBVH, SAH } from 'three-mesh-bvh';
@@ -11,13 +12,15 @@ let nextId = 1;
 
 export class CollisionBody {
   /**
-   * @param {{positions: Float64Array, surfaces: Uint8Array}} data triângulos no espaço do corpo (ColliderBuilder.build())
+   * @param {{positions: Float64Array, surfaces: Uint8Array, parts?: Uint32Array}} data triângulos no espaço do corpo
+   *   (ColliderBuilder.build()); sem `parts`, todos na peça 0
    * @param {{name?: string, matrix?: THREE.Matrix4}} [opts] `matrix`: corpo → mundo, rígida (escala vem assada)
    */
   constructor(data, { name = 'corpo', matrix = null } = {}) {
     const count = data.surfaces.length;
     if (!count) throw new Error(`corpo de colisão vazio: ${name}`);
     this.id = nextId++;
+    this.key = 0; // chave no mundo (CollisionWorld.addBody): determinística, ao contrário do id
     this.name = name;
     this.triangleCount = count;
     this.geometry = new THREE.BufferGeometry();
@@ -29,6 +32,7 @@ export class CollisionBody {
     const P = data.positions;
     this.tris = new Float64Array(count * TRI_STRIDE);
     this.surface = new Uint8Array(count);
+    this.part = new Uint32Array(count);
     for (let i = 0; i < count; i++) {
       const src = index[i * 3] / 3;
       const s = src * 9;
@@ -44,6 +48,7 @@ export class CollisionBody {
       this.tris[o + 10] = ny / len;
       this.tris[o + 11] = nz / len;
       this.surface[i] = data.surfaces[src];
+      this.part[i] = data.parts ? data.parts[src] : 0;
     }
     this.geometry.computeBoundingBox();
     this.localBounds = this.geometry.boundingBox.clone();
@@ -65,5 +70,6 @@ export class CollisionBody {
     this.geometry.dispose();
     this.bvh = null;
     this.tris = null;
+    this.part = null;
   }
 }

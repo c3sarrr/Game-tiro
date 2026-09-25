@@ -7,7 +7,8 @@ import * as THREE from 'three';
 
 /**
  * @param {THREE.WebGLRenderer} renderer
- * @param {object} def rig.environment (walls, floor, background, panels)
+ * @param {object} def rig.environment (walls, floor, background, panels; room = [largura, altura, fundo] da sala, padrão
+ *   9000 × 6000 × 9000 — a pista usa uma sala maior para a key alta e longe caber dentro)
  * @param {Array<{id:string, position:THREE.Vector3, target:THREE.Vector3, color:THREE.Color, fixture:object}>} lights
  * @param {THREE.Vector3} center ponto de onde o ambiente é "fotografado" (centro da cena)
  * @returns {{texture: THREE.Texture, dispose(): void}}
@@ -21,13 +22,15 @@ export function bakeStudioEnvironment(renderer, def, lights, center) {
     mats.push(m);
     return m;
   };
-  // Sala: caixa grande escura em volta (paredes/teto do estúdio) e o chão/mesa quente embaixo.
-  const room = new THREE.BoxGeometry(9000, 6000, 9000);
+  // Sala: caixa grande escura em volta (paredes/teto do estúdio) e o chão/mesa quente embaixo. O centro da caixa sobe
+  // um terço da altura: o chão fica perto e o teto longe, como num estúdio.
+  const [rw, rh, rd] = def.room ?? [9000, 6000, 9000];
+  const room = new THREE.BoxGeometry(rw, rh, rd);
   geos.push(room);
   const walls = new THREE.Mesh(room, basic(new THREE.Color(def.walls), THREE.BackSide));
-  walls.position.set(center.x, center.y + 2000, center.z);
+  walls.position.set(center.x, center.y + rh / 3, center.z);
   scene.add(walls);
-  const floorGeo = new THREE.PlaneGeometry(9000, 9000);
+  const floorGeo = new THREE.PlaneGeometry(Math.max(rw, rd), Math.max(rw, rd));
   geos.push(floorGeo);
   const floor = new THREE.Mesh(floorGeo, basic(new THREE.Color(def.floor)));
   floor.rotation.x = -Math.PI / 2;
@@ -52,7 +55,8 @@ export function bakeStudioEnvironment(renderer, def, lights, center) {
   }
 
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const target = pmrem.fromScene(scene, 0.02, 1, 20000, { size: 256, position: center });
+  // O plano distante alcança os cantos da sala.
+  const target = pmrem.fromScene(scene, 0.02, 1, Math.max(20000, Math.hypot(rw, rh, rd)), { size: 256, position: center });
   pmrem.dispose();
   for (const g of geos) g.dispose();
   for (const m of mats) m.dispose();

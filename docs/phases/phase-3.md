@@ -9,8 +9,8 @@ colisão por **varredura contínua exata** da cápsula (opção A) com o movimen
 |---|---|---|
 | 3.1 | Mundo de colisão BVH + controlador cápsula (paredes, quinas, degraus, rampas, teto, beirada, chão), gravidade, pulo, agachar com troca de cápsula, noclip, sala de testes andável, debug, testes sem navegador (10 min simulados sem atravessar) | ✅ 2026-09-25 |
 | 3.2 | Movimento tático CS: velocidade por arma, andar silencioso, agachar (spam), air-strafe, bunny hop com penalidade, counter-strafe medido, inaccuracy de movimento para a Fase 4, eventos de passo | ✅ 2026-09-25 (plano executado: `docs/phases/phase-3.2-plan.md`) |
-| 3.3 | Pista de testes: pesquisa no Pinterest + mapa `pista` com os módulos de movimento | — |
-| 3.4 | Slide, wall-jump, dano de queda, vida mínima do jogador e respawn | — |
+| 3.3 | Pista de testes: pesquisa no Pinterest + mapa `pista` com os módulos de movimento | ✅ 2026-09-25 (plano executado: `docs/phases/phase-3.3-plan.md`) |
+| 3.4 | Slide, wall-jump, dano de queda, vida mínima do jogador e respawn | ✅ 2026-09-25 (plano executado: `docs/phases/phase-3.4-plan.md`) |
 | 3.5 | Sensação: head-bob, inclinação, squash & stretch no pouso, pegadas na massa + aceite da fase | — |
 
 ## Unidades e números de referência
@@ -505,26 +505,610 @@ implementação der (diferença máxima de 1 tick; maior que isso é investigado
 - [x] Testes passando (166, incluindo os 10 min simulados); sem erros do jogo no console; sem vazamento em 3 ciclos
   menu ↔ sala; arquivos < 600 linhas; números em `src/data/`.
 
-## 3.3 — Pista de testes (plano)
-Pesquisa no Pinterest antes do visual (pistas de obstáculos de papelão, blocos e réguas como arquitetura, escadas
-de livros, rampas de balsa, bancada vista de cima), moodboard item 11. Mapa `pista` montado com o kit e os materiais
-do set: faixa de counter-strafe com grade de 1 m, escadas de 8/12/16/18/20/24 u, rampas de 15/30/44/46/60°, caixas
-de 57/64/72 u, poço e paredes em zigue-zague para wall-jump, vãos de slide sob régua/lápis, torre de queda com
-marcas de altura (200/420/600/900/1310 u), faixa longa de bhop com marcas de distância, vigas estreitas de balsa,
-paredes finas de papelão, túnel baixo e placas de chão de massinha para as pegadas. Colisão com as formas do
-`ColliderBuilder`, montagem de luz própria e acesso pelo menu, lobby e console.
+## 3.3 — Pista de testes
 
-## 3.4 — Slide, wall-jump e dano de queda (plano)
-- Vida mínima do jogador (`src/player/vitals.js`: vida 100, colete do `Loadout`, `god`, morte e respawn na sala
-  de testes/pista).
-- Slide: correr + agachar no chão acima de ~80% da velocidade máxima; ~0,6 s com impulso inicial, atrito baixo,
-  controle lateral leve, rampas aceleram, cápsula agachada (passa sob vãos), pulo mantém o embalo, recarga de ~1 s.
-- Wall-jump: no ar, tocando parede (varredura horizontal curta), o pulo empurra para longe da parede e para cima;
-  1 por contato de parede (a mesma parede só volta a valer depois de tocar o chão; paredes diferentes encadeiam),
-  com tolerância curta depois de soltar a parede.
-- Dano de queda: seguro até ~420 u de altura (≈ 819,8 u/s no impacto), fatal por volta de 1310 u (a mesma razão do
-  CS), linear na velocidade entre os dois; colete não reduz.
-- Números em `src/data/movement.js`; testes de duração, recarga, contagem de wall-jumps e curva de dano.
+Desenho aprovado em 2026-09-25, seção por seção (escala e disposição; estações 1–6; estações 7–12; materiais, luz e
+desempenho; código, ferramentas e testes). Pesquisa antes do visual: 17 boards do Pinterest (COC a LDB, 330 pins) e o
+"Mapper's Reference" do CS:GO na Valve Developer Community — observação, pins e decisão de cada peça no item 11 do
+`docs/art/moodboard.md`.
+
+Decisões do usuário nesta subfase:
+- **Parque de estações** (e não circuito único nem mesas separadas): cada módulo isolado num lote, dá para repetir e
+  medir sem esbarrar nos outros; teleporte por estação.
+- **Caixas nos limites exatos** (57/58/64/66/67/72 u) e **gabarito de portais** (73/72/55/54 u): a pista prova os
+  números, não só ilustra.
+- Números das estações que dependem da 3.4 (wall-jump e slide) ficam provisórios em `src/data/pista.js`; a 3.4 ajusta
+  só os dados.
+- A pista entra na mesma árvore (branch `fase-3.1`), sem commit até o usuário pedir.
+
+### Escala, base e convenções
+- **1 u = 1 mm real** (o boneco de 72 u tem 7,2 cm): cada objeto do dia a dia entra com a medida verdadeira — livro
+  deitado 150 × 230 × 8–24 u, régua escolar 300 × 30 × 3, lápis Ø7 × 175, tubo de papel-toalha Ø45, trena de 5 m,
+  placa de massinha de 5 u.
+- **Base**: compensado de 18 u no chão do estúdio, tampo em y = 0, X ∈ [−2800, 2800], Z ∈ [−2000, 2000] (5,6 × 4 m
+  reais), chapas de 2440 × 1220 com emendas, parafusos e riscos de lápis. Em volta, o chão escuro do estúdio 18 u abaixo.
+- **Cerca**: caixas de papelão de parede dupla (6 u) abertas e em pé, 200 u de altura (acima dos 66 u do pulo
+  agachado), face interna em x = ±2760 e z = ±1960, emendas de fita crepe e estampas de caixa ("este lado para cima",
+  "frágil"); colisão de 8,4 u (papelão + empeno, como a sala de testes).
+- **Convenções**: origem no centro do tampo; norte = −Z, leste = +X; rumo (graus, horário a partir do norte) nas
+  descrições; o yaw do jogador é o do resto do jogo (0 = norte, +90° = oeste, isto é, yaw = −rumo).
+- **Lotes** demarcados no compensado com fita crepe; o chão de cada lote é o do material da estação (tapete de corte
+  em 2, 3, 4, 9 e 10; papel kraft em 8 e 12; papel quadriculado em 1; compensado nu em 5, 6, 7 e 11). Cada lote tem uma
+  plaquinha de papelão dobrada em "A" com número e nome.
+- **Spawn**: (0, 0, 1200), olhando para o norte (pitch −2°), no fundo da praça ao sul da quadra. Na praça: prancheta num
+  cavalete de papelão com a **planta da pista desenhada a lápis** a partir dos dados do layout (lotes, números, rota
+  tracejada, "você está aqui", rosa dos ventos) e a luminária de mesa acesa sobre ela, inteira na primeira vista.
+
+Lotes (X × Z, u):
+
+| Nº | Estação | Lote |
+|---|---|---|
+| 1 | Counter-strafe | [−850, 850] × [−600, 600] |
+| 2 | Escadas de livros | [1450, 2500] × [−1500, −550] |
+| 3 | Rampas | [1450, 2600] × [−450, 400] |
+| 4 | Caixas | [1500, 2300] × [550, 1100] |
+| 5 | Wall-jump (poço e zigue-zague) | [−2750, −1400] × [−200, 950] |
+| 6 | Vãos de slide e gabarito | [−2750, −950] × [1100, 1900] |
+| 7 | Torre de queda | [−2750, −1420] × [−1520, −230] |
+| 8 | Faixa de bhop | [−2560, 2400] × [−1900, −1540] |
+| 9 | Vigas de balsa | [−1400, −300] × [−1460, −700] |
+| 10 | Paredes finas | [250, 1250] × [−1450, −650] |
+| 11 | Túnel baixo | [1300, 2400] × [1350, 1560] |
+| 12 | Pegadas | [−800, 800] × [1450, 1700] |
+| — | Praça do spawn | [−600, 600] × [700, 1300] |
+
+### Estações 1–6
+**1 · Counter-strafe.** Folha de papel quadriculado de plotter em x ∈ [−800, 800], z ∈ [−450, 550], presa com fita crepe
+nos cantos e no meio das bordas, levemente ondulada (papel). Linha forte a cada 100 u (1 m), fina a cada 20 u, metros
+numerados nas bordas sul (0–16) e oeste (0–10); faixa de fita colorida de 20 u ao longo de x em z = 50 (linha de
+strafe). Ao norte, dois pilares de peek — pilhas de dois blocos de faia de 96 × 100 × 96 — centrados em (±450, −540).
+Com as linhas de 20 u se vê a diferença entre parar no contra (~10–15 u) e soltando (~60 u); os alvos da Fase 4 entram
+atrás dos pilares.
+
+**2 · Escadas de livros.** Seis pilhas de seis livros da mesma espessura t (a altura do degrau), em duas fileiras:
+- fileira sul (degraus de 8, 12 e 16 u): frentes em z = −600, costas em z = −950;
+- fileira norte (18, 20 e 24 u): frentes em z = −1100, costas em z = −1450 (corredor de 150 u entre as fileiras);
+- pilhas centradas em x = 1580, 1920 e 2260 (8/18, 12/20, 16/24).
+
+Livro k (0 = embaixo): fundo 350 − 40k, largura 260 − 20k, costas alinhadas nas costas da pilha, de y = k·t a
+(k+1)·t — a frente de cada livro recua 40 u e forma o degrau; topos em 48/72/96/108/120/144 u. Lombadas viradas para o
+sul com título e altura; plaquinhas "18 u · o limite", "20 u · só pulando", "24 u · só pulando". Superfície `papelao`.
+
+**3 · Rampas.** Caixa de arquivo de papelão (a plataforma) em x ∈ [1500, 2540], z ∈ [−400, −100], 120 u de altura.
+Cinco cunhas de papelão fechadas dos lados, 160 u de largura, centradas em x = 1580 (15°), 1800 (30°), 2020 (44°),
+2240 (46°) e 2460 (60°), subindo de z = −100 + L até a frente da caixa, com L = 120/tan θ (447,85 / 207,85 / 124,26 /
+115,88 / 69,28 u). Transferidor de papel colado na lateral leste de cada uma, com o ângulo riscado a lápis; etiqueta com o
+ângulo. 44° sobe andando, 46° e 60° escorregam (limite de 45,573°). Superfície `papelao`.
+
+**4 · Caixas.** Blocos de faia de 128 × 128 u de base com cantos arredondados (raio 3) e a altura em estêncil na face
+sul: fileira sul z ∈ [900, 1028] com 57, 58 e 64; fileira norte z ∈ [600, 728] com 66, 67 e 72; colunas x ∈ [1550, 1678],
+[1758, 1886] e [1966, 2094]. 57 e 58: limite do pulo em pé (ápice 57,03 u); 64, 66 e 67: pulo agachado (66 u); 72: a
+altura do boneco. Superfície `madeira`.
+
+**5 · Wall-jump** (números provisórios da 3.4).
+- **Poço**: chaminé de quatro paredes de compensado de 8 u, 256 u de altura, por dentro x ∈ [−2538, −2362],
+  z ∈ [62, 238]; paredes distintas com faixa de cor e número (norte 1 vermelho, leste 2 amarelo, sul 3 verde, oeste 4
+  azul) — a mesma parede só volta a valer depois de tocar o chão. Porta embaixo na parede sul: x ∈ [−2498, −2402],
+  0–88 u. Saída: prancha de compensado (64 × 6 u) do topo da parede leste até uma torre de blocos de faia em
+  x ∈ [−2300, −2120], z ∈ [60, 240], 256 u de altura.
+- **Zigue-zague**: plataformas de blocos de faia de 128 u — A em z ∈ [700, 900] e B em z ∈ [−140, 60], ambas
+  x ∈ [−1850, −1650] — com vão de 640 u entre elas; painéis de papelão de parede dupla (8 × 160 × 320 u) alternando os
+  lados do corredor de 200 u: oeste (face em x = −1850) em z ∈ [540, 700] e [220, 380]; leste (face em x = −1650) em
+  z ∈ [380, 540] e [60, 220]. Quem erra cai 128 u no compensado; rampa de papelão de 30° (L = 221,7 u, 160 de largura)
+  sobe pelo leste até a plataforma A.
+
+**6 · Vãos de slide e gabarito** (faixa provisória da 3.4).
+- **Faixa**: x ∈ [−2600, −1000], z ∈ [1195, 1345] (150 u, fita nas bordas), 500 u de corrida antes da primeira trave.
+  Traves atravessadas, com a face de baixo exata: x = −2100 régua de madeira (300 × 30 × 3) a 70 u; x = −1850 lápis
+  (Ø7 × 175) a 64 u; x = −1600 régua de aço (300 × 25 × 1) a 58 u; x = −1350 espeto de bambu (Ø4 × 300) a 55 u. Cada
+  trave em dois apoios de 40 × 40 u fora da faixa (pilhas de blocos e livros finos da altura exata) com uma bolota de
+  massinha segurando a ponta. Em pé não passa em nenhuma; agachado (54 u) passa em todas.
+- **Gabarito**: quatro portais para atravessar no sentido norte–sul, centrados em z = 1650 e x = −2520, −2360, −2200 e
+  −2040, vão de 64 u, colunas de 30 × 40 u, verga de régua de 15 cm: 73 u (em pé passa), 72 u (em pé não passa), 55 u
+  (agachado passa), 54 u (agachado não passa) — os números do CS ("teto que não bate") com a cápsula 72/54.
+
+### Estações 7–12
+**7 · Torre de queda.** Eixo em (−2100, −900).
+- **Tubo** de papelão grosso, raio 90 u (parede de 6), 1310 u de altura, tampa em cima (o topo da torre).
+- **Espiral de 78 livros** de 200 × 130 u encaixados no tubo (de r = 70 a r = 270), um por degrau, cada um 18° à frente
+  do de baixo no sentido horário, o primeiro no rumo 270° (oeste). Cinco trechos com espessura própria para cada marca
+  cair exata e todo degrau ficar abaixo de 18 u: 12 livros de 16 u (topo 192), 13 de 16,923 (412), 11 de 16,364 (592),
+  18 de 16,667 (892) e 24 de 17,083 (1302). O degrau livre de cada livro é a faixa de 18° que o de cima não cobre
+  (≥ 47 u de largura a partir de r = 150); o livro da volta de cima fica ≥ 300 u acima de cada degrau.
+- **Pranchas** de compensado (96 × 8 u, de r = 250 a 520) apoiadas no livro de cada marca, com o topo exatamente em
+  200, 420, 600, 900 e 1310 u, giradas 10° para trás do livro (não encostam no degrau seguinte). Rumos: 200 → 98°,
+  420 → 332°, 600 → 170°, 900 → 134°, 1310 → 206° — nenhuma aponta para o oeste (cerca) nem se cruza.
+- **Alvos** pintados no compensado (raio 90, três anéis e o número da altura) a r = 580 no rumo de cada prancha.
+- **Tábua de crescimento** (1400 × 60 × 12 u) em pé a r = 330 no rumo 116° (entre as pranchas de 200 e 900), voltada para
+  fora: numerais brancos a cada 100 u, traços a cada 10 u, anotações à mão com risco horizontal nas cinco alturas
+  ("420 · o limite seguro", "1310 · fatal" — números da 3.4).
+- Superfícies: tubo e livros `papelao`, pranchas e tábua `madeira`.
+
+**8 · Faixa de bhop.** Papel kraft em x ∈ [−2500, 2300], z ∈ [−1880, −1560] (4800 × 320 u), fita crepe nas bordas; 400 u de
+corrida até a linha de largada (x = −2100). Trena de aço amarela (lâmina de 25 u) esticada ao longo da borda sul, com o
+zero na largada e 4400 u até a chegada (número a cada 10 u, vermelho a cada 100 u); o estojo (70 × 70 × 40 u, plástico)
+fica na chegada, no canto sul. Etiquetas a cada 500 u na borda norte ("5 m · 500 u" … "40 m · 4000 u"); bandeirinha
+xadrez de papel num palito espetado numa bolota de massinha na chegada (x = 2300). Superfície `papelao`.
+
+**9 · Vigas de balsa.** Plataformas de blocos de faia de 96 u em x ∈ [−1350, −1150] e [−510, −310], z ∈ [−1440, −980]
+(vão de 640 u). Quatro ripas de balsa de 6 u de espessura apoiadas 20 u em cada plataforma (x ∈ [−1170, −490], topo
+em 102), com 32, 16, 8 e 4 u de largura, centradas em z = −1400, −1300, −1200 e −1100; alfinetes de cabeça colorida nas
+pontas. Ripa inclinada a 20° (16 × 6 u) em x = −1250 subindo do chão (z = −716,2) até a borda sul da primeira
+plataforma. Superfície `madeira`.
+
+**10 · Paredes finas.** Papelão de uma face (2 u), 180 u de altura:
+- fileira de espessuras (z = −1400): painéis de 160 u em x = 380, 580, 780 e 980 com 0,5, 1, 2 e 4 u;
+- muro em z = −1220 de x = 280 a 1220 com um vão de 33 u (centro x = 520, passa) e um de 31 u (x = 880, não passa);
+- corredor em zigue-zague de 64 u (curvas de 60°, trechos de 120 u) em x ∈ [300, 620], z ∈ [−1100, −800];
+- quina aguda de 20° aberta para o sul em x ≈ 760, z ∈ [−1050, −800];
+- parede curva de raio 160 (arco de 90°, 12 trechos) centrada em (1050, −880).
+
+Superfície `papelao`.
+
+**11 · Túnel baixo.** Três caixas rasas de papelão (paredes e teto de 4 u, sem fundo) emendadas com fita ao longo de x,
+por dentro z ∈ [1386, 1514] (128 u): x ∈ [1350, 1650] com 60 u de altura, [1650, 1950] com 96 u e [1950, 2250] com 60 u
+(o degrau entre os tetos é fechado). Abas das bocas abertas para fora; três furos de Ø24 no teto das caixas baixas e
+fendas de respiro nas laterais da alta; pisca-pisca de 12 lampadinhas quentes no teto (lado norte) e uma luz prática sem
+sombra (2400 K, alcance 320 u) na caixa do meio. Agachado passa; em pé, só na caixa do meio. Superfície `papelao`.
+
+**12 · Pegadas.** Tira de papel kraft em x ∈ [−760, 760], z ∈ [1480, 1680] com sete placas de massinha de 180 × 130 × 5 u,
+centradas em x = −600 … 600 (a cada 200) e z = 1580, giradas ±4° (seed). Cores: terracota `#C8553D`, laranja `#F28F3B`,
+amarelo `#F4C542`, verde `#5BA55B`, azul `#2F6DB5`, rosa `#E88AA8` e branco-massa `#F4EDE1`. Abertas no rolo (marcas do
+rolo), borda cortada à mão, uma letra carimbada em cada (P-E-G-A-D-A-S) e borda de furinhos. Superfície `massinha`
+(aceita pegadas na 3.5).
+
+### Materiais, peças e luz
+Materiais novos do set (shader próprio cada, todos pela luz suave de estúdio de `studioLight.js`):
+- **Compensado** (`woodMaterials.js`): lâmina de bétula com veio largo e remendos ovais nas faces; lâminas alternadas
+  nas bordas (a espessura segue o eixo Y local da peça); parafusos e riscos de lápis na base.
+- **Faia** (`woodMaterials.js`): o shader da balsa com cor e escala da faia (blocos).
+- **Livro** (`bookMaterial.js` + `bookGeometry.js`): um material para todos os livros; atributo por vértice diz a parte
+  (capa, miolo, lombada, cantos); cor da capa pela cor da peça no lote (`BatchedMesh.setColorAt`); miolo com as linhas
+  das folhas; título e altura na lombada lidos de um atlas de texto.
+- **Régua e fita de medir** (`measureMaterials.js`): uma família com três aparências — régua escolar de madeira com
+  traços, lâmina amarela da trena com números pretos e vermelhos, tábua de crescimento escura com numerais brancos —
+  usando o atlas de dígitos do tapete de corte; e o **papel quadriculado** da quadra.
+- **Impressão em papel e tinta** (`printMaterials.js`): papel com desenho de canvas (planta, transferidores, bandeirinha)
+  e tinta com recorte por alpha test (alvos, estêncil dos blocos, estampas da cerca, notas da tábua) — sem transparência,
+  para não bagunçar AO e DOF. Os desenhos da pista ficam num atlas por mapa.
+- **Laca e borracha** (`paintMaterials.js`): corpo pintado do lápis e borracha rosa.
+- **Papelão de uma face** (`paperMaterials.js`): opção nova do papelão com as ondas à mostra num lado.
+- Reaproveitados: papelão, fita crepe e etiquetas, tapete de corte, balsa, arame (fio do pisca-pisca), metal de
+  ferramenta (ponteira, alfinetes), plástico (estojo da trena) e difusor (lampadinhas).
+- Geometrias novas em `bookGeometry.js` (livro com capa maior que o miolo, lombada arredondada, cantos) e
+  `stationeryGeometry.js` (lápis sextavado apontado, régua com bisel, trena e estojo, espeto, alfinete, bandeirinha);
+  placas de massinha com o kit (`claySlab`) e borda cortada à mão.
+- **`ClayMaterial`**: canal de impressão opcional (define própria, desligado por padrão): uma textura de relevo (fundo da
+  marca e lábio de massa empurrada) desloca a normal e escurece levemente o fundo; na 3.3 desenha as letras carimbadas
+  e os furinhos pelas uv das placas; na 3.5 recebe as pegadas pelo mesmo caminho.
+
+Montagem de luz `pista` (`src/data/studioRigs.js`):
+- key de tungstênio (3300 K, 2,4 lux no centro) em softbox pendurada, alta e longe — em (−3200, 8400, 4400), apontada
+  para o centro, cone de 28° — para a base toda receber luz com queda de ~2× do centro às bordas; é a única com sombra,
+  com mapa ×2 (4096 no Alto; o tamanho passa a ter teto de 4096) e o frustum apertado no cone (`focus` 0,8);
+- fill frio (7600 K, 0,5) do lado oposto, rim (5600 K, 1,2) alto vindo do norte — níveis abaixo dos da sala de testes:
+  o compensado claro devolve ~4× a luz do tapete verde;
+- luzes práticas: a luminária de mesa do spawn (2700 K, alcance 900 u) e a luz do túnel (2400 K, alcance 320 u, a meia
+  altura da caixa alta), sem sombra;
+- rebote hemisférico, ambiente assado numa sala de 26 × 22 × 26 m (a softbox da key cabe nela) e poeira só no ar baixo
+  da base (até 240 u; o cone inteiro tem 10 m e, espalhada nele, a poeira parecia um céu estrelado contra o fundo);
+- `staticShadows: true`: nada na pista se mexe e a sombra é feita uma vez.
+
+Desempenho (metas no preset Alto, RTX 2070): peças estáticas de um mesmo material juntas num `BatchedMesh` (geometrias
+diferentes num só draw, cor e corte de visão por peça; o encanamento de `objectSpace.js` já trata `USE_BATCHING`); as sete
+placas de massinha como malhas próprias. ~120 draws no máximo, cena abaixo de ~400 mil triângulos, GPU em 1080p perto
+dos ~3,3 ms da sala de testes; colisão com ~4 mil triângulos, custo por tick perto do da sala; sem vazamento em 3 ciclos
+menu ↔ pista. A câmera de stop-motion no tripé e os equipamentos extras de borda ficam para a Fase 6.
+
+### Código
+- `src/data/pista.js`: todos os números acima (lotes, estações, trechos da torre, cores, textos das etiquetas, pontos de
+  teleporte).
+- `src/maps/pista/layout.js` (puro, sem WebGL): expande os dados numa lista de peças — tipo, forma (caixa, cunha,
+  cilindro), matriz, tamanho, superfície, se colide e aparência (material, cor, texto) —, determinística (seed nas
+  pequenas tortices de "feito à mão").
+- `src/maps/pista/colliders.js` (puro): monta o `ColliderBuilder` a partir das peças.
+- `src/maps/pista/visual/`: aparência por família em arquivos de até 600 linhas — chão e papéis, livros, madeira, papelão,
+  arte (canvas), extras e placas de massinha —, mais o ajudante que agrupa as geometrias por material em `BatchedMesh`.
+- `src/maps/pista/index.js`: registra o mapa `pista` (apelidos `treino`, `parque`, `obstaculos`) e monta cena, luz,
+  colisão, estações e `dispose`.
+- `MapInstance.stations`: `[{ number, id, label, aliases, spots: [{ id, label, position, yaw, pitch }] }]` — genérico
+  (os mapas da Fase 6 podem declarar os seus).
+- Console: `estacao [n|nome] [ponto]` — sem argumento lista as estações e os pontos; com argumento teleporta (zera a
+  velocidade): `estacao 7 900`, `estacao bhop`, `estacao gabarito`. `map pista` e o lobby listam o mapa; o menu ganha o
+  botão "Pista de testes"; as dicas do HUD citam o `estacao`.
+- **Medidor de salto e queda** (`src/debug/jumpMeter.js`, puro, alimentado pelo `matchState` a cada tick como o de
+  counter-strafe): por pulo — distância no plano, ápice acima da saída, tempo no ar, queda (ápice − pouso) e velocidade de
+  pouso; por série de bhop (pulos com até 1 tick no chão entre eles) — número de pulos, distância total, velocidade média e
+  máxima no plano. Linhas novas no `cl_showpos`; `cl_salto_reset` zera.
+- O tamanho do mapa de sombra passa a ter teto (4096 e o máximo da GPU) em `renderSystem.js`.
+
+### Testes (Node, sem navegador)
+- `pistaLayout`: lotes dentro da base e sem sobreposição; peças dentro do seu lote; topos das escadas e dos blocos,
+  ângulos das cunhas (pela normal da face), face de baixo das traves, vãos dos portais, tetos do túnel, larguras das
+  vigas, topos das pranchas da torre, espessura de todo degrau da espiral ≤ 18 u, livros e pranchas sem se cruzar,
+  superfícies válidas.
+- `pistaMovement` (`PlayerPawn` na colisão real da pista): spawn livre; escadas de 8/12/16/18 u sobem andando e as de 20
+  e 24 u não; rampas de 15/30/44° sobem e as de 46/60° escorregam; pulo em pé alcança 57 e não 58, pulo agachado
+  alcança 64 e 66 e não 67 nem 72; portais 73/72 em pé e 55/54 agachado; no túnel não levanta nas caixas de 60 u e
+  levanta na de 96; vão de 33 u passa e de 31 não; de pé na viga de 4 u; pouso em cada prancha da torre na altura exata;
+  roteiro de passos sobe o primeiro trecho da espiral até a prancha de 200.
+- `pistaFuzz`: 10 minutos simulados com entrada aleatória partindo de cada estação — nenhuma penetração além da folga,
+  resultado idêntico bit a bit em duas rodadas (a parte automática do aceite da 3.5, adiantada).
+- `jumpMeter`: sequências sintéticas, a interrupção pelo teleporte e o pulo plano, a série de bhop e a queda de 900 u
+  simulados.
+- Acrescentados na implementação: `pistaGeometry` (cada livro, peça de papelaria, recorte e caixa de papelão cabe na
+  caixa de colisão dela, sem triângulo virado nem degenerado; o `BatchBuilder` une atributos e reaproveita geometria),
+  `pistaMaterials` (o remendo de cada material novo entra no shader físico e todo uniform declarado tem valor; a
+  impressão do `ClayMaterial` troca os valores no lugar), `pistaRig` (a key alcança a base inteira dentro do cone e do
+  frustum da sombra, luzes práticas com alcance, sala do ambiente com todas as luzes, poeira só na caixa) e
+  `stationCommands` (o `estacao` e o registro do mapa).
+
+### Ajustes feitos na implementação
+- Spawn no fundo da praça (z = 1200, pitch −2°) e luminária mais baixa (lâmpada a 290 u): a luminária inteira e a
+  prancheta entram na primeira vista (em z = 1000 só aparecia a haste no meio da tela).
+- Luz: níveis da montagem mais baixos que os da sala (o compensado claro estourava), compensado um pouco mais escuro
+  (bétula usada), luz do túnel a meia altura (colada no teto, estourava o papelão de perto), poeira numa caixa baixa.
+- Ponto `entrada` do túnel recuado para x = 1250 (a aba de cima da boca aberta ficava na altura do olho).
+- Placas das pegadas com o P a leste: quem vem da praça olhando para o sul lê P-E-G-A-D-A-S da esquerda para a
+  direita; relevo das letras exagerado (4,5 u) como a luz rasante de macro mostra nas fotos.
+- Anotações da tábua de crescimento ao longo dela; tapetes e papéis do chão com colisão (a espessura conta nos
+  números); lote 11 no compensado nu; chão do estúdio e base da luminária com colisão.
+- Ondas do papelão de uma face somem suavemente de longe (moiré na quina das paredes finas).
+- Montagem mais leve: marcas do rolo das placas numa grade de 8 px interpolada e bolotas com 8 divisões (de ~3,1 s
+  para ~1,5 s de montagem, 50 mil triângulos a menos).
+
+### Medições (2026-09-25, preset Alto, 1920 × 1080, GPU do usuário)
+- Pista: 31 desenhos estáticos (lotes + malhas próprias), 285 mil triângulos no total, 735 peças nos lotes; colisão com
+  3532 triângulos.
+- Quadro: spawn 59 draws, 156 mil triângulos, GPU ~4,5 ms (cena 2,3 ms); vista geral de cima 62 draws, 295 mil
+  triângulos, 5,3 ms; torre 3,0 ms, escadas 3,6 ms, túnel 3,4 ms, faixa de bhop 4,7 ms. Sala de testes na mesma
+  máquina: 60 draws, 3,3 ms. Draws e triângulos dentro das metas; a GPU passa da meta de "perto de 3,3 ms" nas vistas
+  que pegam a base inteira (o compensado aceso cobre metade da tela) — fica para a passada de desempenho da Fase 6.
+- Montagem do mapa ~1,5 s com o cache de shader quente (primeira vez numa máquina: ~20 s compilando os shaders novos).
+- Memória: menu com 2 geometrias / 34 texturas / 25 programas nas três saídas; pista com 42 / 80 / 46 nas três
+  entradas; ouvintes de `player:weapon`, `player:zoom` e `loadout:change` em 0 no menu.
+- Medidor no navegador: pulo parado "ápice 57.0 · 0.75 s · pouso 286 u/s"; queda da prancha de 420 até o kraft da
+  faixa de bhop "queda 419.7 · pouso 806 u/s"; série de 8 pulos correndo com a faca "1359 u em 5.55 s · média 245 u/s".
+
+### Aceite da 3.3
+- [x] Pesquisa no Pinterest registrada (item 11 do moodboard, folha de contato regenerada).
+- [x] Mapa `pista` com as 12 estações nos números acima, acessível pelo menu, pelo lobby e pelo console; `estacao` leva a
+      cada estação e ponto.
+- [x] Visual conferido contra o moodboard: a pista parece um set de stop-motion montado com objetos de verdade na escala
+      do boneco, não um blockout.
+- [x] Medidor de salto e queda no `cl_showpos`.
+- [x] Testes novos passando (layout, movimento na pista, 10 min simulados, medidor, geometrias, materiais, luz e
+      `estacao`) junto com os antigos: 213 testes.
+- [x] Sem erros do jogo no console; sem vazamento em 3 ciclos menu ↔ pista; metas de draws, triângulos e GPU medidas e
+      anotadas (acima); arquivos abaixo de 600 linhas (o maior, `ClayMaterial.js`, com 554); números em `src/data/`.
+
+## 3.4 — Slide, wall-jump e dano de queda
+
+Desenho aprovado em 2026-09-25, seção por seção (slide; wall-jump; dano de queda, vida, morte e respawn; pista e debug;
+arquivos, testes e aceite). Base: PROMPT 0 seção 0.6 — "slide (correr + agachar, dura ~0,6 s, com cooldown) e wall-jump
+(1 por contato de parede, reseta ao tocar o chão)" e "dano de queda a partir de ~420 unidades de altura" —, o `player.js`
+do Doodle District (lido no repositório de referência) e o código do CS:GO (a árvore `cstrike15` de ~2017): o
+`CheckFalling` e o `PlayerRoughLandingEffects` de `gamemovement.cpp`, o `FlPlayerFallDamage` e as constantes de queda de
+`cs_gamerules.cpp`, o `PlayerFallingDamage` de `movehelper_server.cpp`, o `OnTakeDamage_Alive` (acumulador de dano) de
+`basecombatcharacter.cpp` e o colete do `CCSPlayer::OnTakeDamage` de `cs_player.cpp`. Plano de implementação:
+`docs/phases/phase-3.4-plan.md` (validado tarefa por tarefa numa cópia limpa; os números abaixo são os do código pronto).
+
+Decisões do usuário nesta subfase:
+- **Segurar para deslizar**: soltar o Ctrl encerra o slide, que dura no máximo ~0,6 s (como na referência e no agachar
+  de segurar do CS). A alternativa (slide comprometido até o fim) saiu.
+- **Wall-jump para onde o jogador olha** (e não a fórmula literal da referência): com o controle aéreo do CS (desejo
+  limitado a 30 u/s), o empurrão perpendicular da referência não deixa mirar o próximo painel — a simulação na colisão
+  real (protótipo fora do projeto) só fechava o zigue-zague minúsculo; o chute para onde o jogador olha atravessou um
+  zigue-zague de 4 painéis e subiu um poço de 4 paredes.
+- **Razão exata do CS:GO no dano de queda** (1000/580, conferida no código): a do Source (1024/580), usada no rascunho
+  do "~1310 fatal", deixava 1 de vida na queda da prancha de 1310 (99,4 de dano); com a do CS:GO ela mata (105).
+- Arquitetura da 3.2 (**abordagem A**): slide e wall-jump são funções puras dentro do `playerMove`, sobre o estado de
+  movimento (a predição da Fase 9 e os bots da Fase 7 reaproveitam só gerando outro comando); a vida fica num módulo
+  puro aplicado pelo `PlayerPawn` a partir do evento de pouso.
+- A 3.4 entra na mesma árvore da branch `fase-3.1`, sem commit até o usuário pedir.
+
+### O que a referência e o CS fazem (números de origem)
+- **Doodle District** (`src/player.js`, igual desde o primeiro commit; unidades em metros, boneco de 1,75 m, sprint 10,6
+  m/s, andar 6,6, agachado 3,6, pulo 9,6 m/s, gravidade 26 m/s²):
+  - slide: começa com o agachar apertado no chão acima de 6,3 m/s; impulso até 12,8 m/s (no máximo +4,5); durante,
+    freio constante de 6,5 m/s² e desejo lateral de 6 m/s² que não aumenta a velocidade; acaba ao soltar o agachar,
+    abaixo de 3,5 m/s ou com mais de 0,35 s no ar; pular no slide multiplica a velocidade por 1,06;
+  - wall-jump: todo contato horizontal no ar guarda a normal da parede por 0,12 s; o pulo tem buffer de 0,15 s; espera
+    de 0,35 s entre wall-jumps; só com a subida abaixo de 7 m/s; velocidade = normal × 7,5 + velocidade × 0,35 +
+    frente × 2,5 e vertical 9,2 m/s (0,958 do pulo);
+  - hoje a referência tem também pulo duplo, air-dash, gancho e escalada de beirada: a spec tira o air-dash e o gancho
+    e não pede os outros.
+- **CS:GO** (valores fora do HL2): `PLAYER_FATAL_FALL_SPEED` 1024, `PLAYER_MAX_SAFE_FALL_SPEED` 580,
+  `PLAYER_FALL_PUNCH_THRESHOLD` 350 (`shareddefs.h`); no `cs_gamerules.cpp`, `CS_PLAYER_FATAL_FALL_SPEED` 1000 e
+  `CS_PLAYER_MAX_SAFE_FALL_SPEED` 580, dano = (queda − 580) × 100/(1000 − 580), sem o fator 1,25 do CS:S. O pouso com
+  queda acima de 580 chama o dano (`DMG_FALL`, som "Player.FallDamage"); o colete só vale para dano genérico, de bala,
+  explosão, pancada e corte — nunca para queda. O `god` (FL_GODMODE) anula o dano no `OnTakeDamage_Alive`, que aplica a
+  parte inteira do dano e guarda a fração num acumulador (`m_flDamageAccumulator`) até completar 1. Quem pousa pelo
+  duckbug não passa pelo `CheckFalling`: nem pouso, nem dano.
+
+### Ordem do tick (atualizada)
+`playerMove(estado, cmd, env)` — a lista da 3.2 com os passos novos:
+1. `checkParameters`: teto do tick, portão do agachar, andar e fator da stamina.
+2. Relógios: stamina, tempo desde o último agachar, recarga do slide, buffer do pulo no ar e espera do wall-jump.
+3. Desprender.
+4. Queda: no ar, `fallVelocity = −vy` do começo do tick.
+5. Passos (o relógio fica parado durante o slide).
+6. **Botão do slide** (depois do portão do agachar, antes da transição): soltar o Ctrl encerra; o começo.
+7. Agachar (`duck.js`); no slide a cápsula já está agachada e fica.
+8. Meia gravidade.
+9. Pulo: no chão, o pulo do CS (no slide, sai com o embalo e o slide acaba); **no ar, o wall-jump** com o contato de
+   parede guardado pela sonda e o buffer do botão.
+10. No chão: `vy = 0`, `fallVelocity = 0`; no slide, o atrito do slide; senão o atrito do CS.
+11. Chão: **slide** (movimento próprio) ou aceleração do CS com o teto duro (a velocidade só cai, até caber no teto,
+    logo depois de um slide); ar: air-accelerate e deslize.
+12. `categorizePosition`, limites por eixo, meia gravidade.
+13. **Fim do slide** por tempo, velocidade ou tempo no ar.
+14. **Sonda de parede** (no ar): guarda o contato (idade 0) ou, sem parede, envelhece o último em um tick — a idade vale
+    a partir do começo do tick seguinte, então a tolerância de 0,12 s cobre os 7 ticks depois de desencostar; no chão,
+    a lista de paredes usadas, a contagem do voo e o buffer zeram.
+15. Pouso: evento `land` com `damage` (a velocidade de queda vira dano no `PlayerPawn`).
+
+### Slide (`src/player/slide.js`)
+**Começo**, no passo 6, com tudo isto valendo: no chão; o Ctrl apertado neste tick (o bit cru subiu) e aceito pelo portão
+do spam (`duckHeld`); o pulo não apertado (Ctrl + Espaço continua sendo o pulo agachado do CS); o andar não engatado nem
+o botão do andar apertado; velocidade no plano ≥ 80% da velocidade do item (`s.baseSpeed` = mín(260, `sv_maxspeed`,
+velocidade do item no modo atual): faca 200, AK 172, AWP 160; AWP com zoom 80); recarga vencida; `sv_slide 1`. Na hora:
+- a velocidade no plano sobe para no mínimo `sv_slide_speed` (1,2) × a velocidade do item — faca 300, AK 258, AWP 240 (o
+  impulso da referência, 12,8 ÷ 10,6); velocidade maior fica como está;
+- a cápsula agacha na hora (54 u, `duckAmount` 1, FL_DUCKING); a queda do olho (18 u) vai para a suavização da câmera,
+  como a troca de cápsula no ar;
+- evento `slide` { fase: início, velocidade, velocidade de antes do impulso, superfície }.
+
+**Durante** (no chão, no lugar do atrito e da aceleração do CS):
+- atrito do slide: a fórmula do atrito do CS com `sv_slide_friction` (0,12) × `sv_friction` × atrito da superfície e
+  sem o piso do `sv_stopspeed` — faca 300 → 204,7 u/s em 0,61 s (39 ticks) e 151,2 u percorridos (AK 258 → 176,1 u/s,
+  130,0 u);
+- controle lateral leve: o desejo (WASD/analógico) empurra a no máximo 0,566 × a velocidade do item por segundo (6 ÷
+  10,6 da referência; 141,5 u/s² com a faca, ~27°/s a 300 u/s) e a velocidade volta ao módulo de antes — girar não
+  acelera;
+- rampas: a componente horizontal da gravidade no plano do chão (`sv_gravity` × n.y × (n.x, n.z)) acelera na descida e
+  freia na subida;
+- sem o teto duro do tick; o deslocamento é o do andar (`groundMove` do controlador: varredura, degrau de até
+  `sv_stepsize`, grudar no chão);
+- sem passos (o relógio fica parado e recomeça depois);
+- no ar por pouco tempo (lombada, degrau para baixo além do que o chão acompanha): o movimento é o do ar e o slide segue
+  se pousar em até 0,35 s (o tempo total continua contando).
+
+**Fim**, com o evento `slide` { fase: fim, motivo, tempo, distância, velocidade de entrada e de saída }:
+- soltar o Ctrl (motivo `soltou`) — a decisão do usuário;
+- `sv_slide_time` (0,6 s) desde o começo (`tempo`);
+- velocidade no plano abaixo da do agachado, 0,34 × item (`parou`; subida, parede);
+- pulo (`pulo`);
+- mais de 0,35 s no ar (`ar`);
+- noclip, teleporte, morte ou `sv_slide 0` (`interrompido`).
+
+**Depois do slide:**
+- recarga de `sv_slide_cooldown` (1 s) contada do fim;
+- **saída sem parada seca**: logo depois do slide, com a velocidade acima do teto do tick (agachado, 85 com a faca; em pé,
+  depois de uma descida rápida, 250), o corte duro do CS vira "a velocidade só cai": a aceleração do tick não pode passar
+  da velocidade de antes dela, e o atrito normal freia até caber no teto (205 → 85 em ~11 ticks, 0,17 s); a saída acaba
+  ao caber no teto ou ao sair do chão;
+- soltando o Ctrl, levanta se couber (o `CanUnduck` do CS); sob uma trave continua agachado.
+
+**Pulo no slide:** sai com o embalo do slide — o pulo do CS já corta no teto do bhop (286 u/s, `sv_enablebunnyhopping 0`)
+—, custa stamina como qualquer pulo, e o slide acaba. Com o Ctrl seguro é o pulo agachado do CS: os pés sobem 9 u na hora
+(`HULL.airDuckLift`, a subida do agachar no ar, por varredura — sob um teto sobe menos) e a subida vai para a suavização
+do olho; a cápsula já agachada do slide não faria essa subida sozinha.
+
+**Interações:** a precisão usa a velocidade real e o FL_DUCKING (atirar deslizando é impreciso); o andar (Shift) não
+desliza; Ctrl no ar e pouso com o Ctrl seguro não deslizam (o pulo agachado do CS continua igual); o spam do agachar
+também trava o slide (o aperto passa pelo portão).
+
+### Wall-jump (`src/player/wallJump.js` + `src/physics/wallProbe.js`)
+**Sonda de parede** (passo 14, todo tick no ar): a face de parede mais próxima a até 4 u da cápsula — o segmento
+interno contra os triângulos a até raio + 4 u, sem alocar, no mesmo esquema de consultas do `CollisionWorld` (arquivo
+próprio: o `collisionWorld.js` já tem 580 linhas). Parede = normal de contato a no máximo 20° da horizontal
+(|n.y| ≤ 0,34): chão, teto, topo de parede (o contato na aresta de cima sai inclinado) e rampas de até 70° não contam.
+Guarda { normal no plano, ponto, corpo, peça, superfície }.
+
+**Peças de colisão:** o `ColliderBuilder` passa a guardar a peça de cada triângulo — cada forma (`box`, `cylinder`,
+`ramp`, `stairs`, `geometry`, `object`, triângulos soltos) é uma peça nova; a opção `part` (nome) junta formas numa peça
+só. O `CollisionBody` guarda a peça na ordem do BVH e o trace e a sonda devolvem a peça. O corpo é lembrado pela chave
+que o `CollisionWorld` dá na ordem em que ele entra (`addBody`): igual em dois mundos montados do mesmo jeito (o `id`
+global do corpo muda de um mundo para outro e quebraria o determinismo das rodadas repetidas).
+
+**"A mesma parede"** = mesma peça (no mesmo corpo) com a direção no plano a até 45° de uma já usada. As faces de uma
+caixa (90°) são paredes diferentes; as facetas do tubo redondo dentro de 45° são a mesma; as três peças da parede sul do
+poço (a da porta) são uma parede só (grupo `poco-sul`); painéis separados no mesmo plano (o zigue-zague) são paredes
+diferentes. A lista de paredes usadas (anel de 16) zera ao tocar o chão, no teleporte, no respawn e no noclip.
+
+**Condições** (no passo 9): no ar (`moveType` andar, vivo, `sv_walljump 1`); um aperto do pulo no ar (o bit subiu neste
+tick; no chão o aperto é o pulo do CS) nos últimos 0,15 s — o buffer da referência: apertar um pouco antes de encostar
+também vale; contato de parede nos últimos 0,12 s — a tolerância da referência depois de soltar a parede; essa parede
+ainda não usada desde o chão; velocidade vertical ≤ 220,2 u/s (7 ÷ 9,6 do pulo, a razão da referência: logo depois do
+pulo do chão ainda não vale); 0,35 s desde o último wall-jump.
+
+**O chute (para onde olha):**
+- direção = a horizontal do olhar; olhando para dentro da parede, espelhada no plano dela (de frente sai reto pela
+  normal; de viés, sai para o mesmo lado); e sempre pelo menos 30° para fora da parede (olhando ao longo dela sai a 30°);
+- velocidade no plano = a atual, com piso na velocidade do item (`s.baseSpeed`: faca 250, AK 215, AWP 200 — como no CS,
+  com a faca vai mais longe) e teto de `sv_walljump_maxspeed` (286, o do bhop);
+- vertical: `sv_walljump_up` (289,41 u/s = 0,958 do pulo, a razão 9,2 ÷ 9,6 da referência; +52,35 u acima do ponto do
+  wall-jump) × (1 − stamina/100) menos a meia gravidade do tick (a parábola exata, como o pulo); a stamina soma 0,08 ×
+  o impulso, como um pulo;
+- a parede entra na lista de usadas, o buffer é consumido e a espera recomeça;
+- evento `walljump` { normal, superfície, velocidade, número do wall-jump no voo, corpo, peça } — áudio (Fase 12),
+  audição dos bots (Fase 7) e câmera (3.5).
+
+**Ficam iguais:** no chão, colado na parede, o Espaço é o pulo do CS; no noclip e morto não há wall-jump; a precisão no ar
+segue a regra da 3.2 (termo pela velocidade vertical).
+
+### Dano de queda
+- Conta só no pouso com evento `land` (passo 15): velocidade de queda acima de 819,756 u/s (= √(2·800·420), o "seguro
+  até ~420 u" do PROMPT).
+- Dano = (velocidade − 819,756) × 100 / (1413,373 − 819,756) × `sv_falldamage_scale` — a razão exata do CS:GO
+  (1000/580) sobre o nosso limite seguro: 0,1685 de vida por u/s; fatal a partir de 1413,373 u/s.
+- Simulação no controlador real (queda do repouso sobre chão plano): 200 u → 0; 420 u → 0 (pouso a 812,5 u/s); 430 u →
+  0,88; 600 u → 26,15; 900 u → 61,95; 1200 u → 93,54; 1250 u → 99,85 (sobra 1 de vida); 1310 u → 104,06 (morre). As
+  velocidades de pouso andam em degraus de 12,5 u/s (a gravidade de um tick), então a queda do repouso passa a matar entre
+  1270 e 1310 u; saindo andando de uma prancha o degrau cai em outro lugar (as pranchas da torre, andando com Shift: 0,
+  0, 25,1, 63,0 e 105).
+- O colete não reduz; `god` não toma dano; pouso pelo duckbug (sem evento `land`) não toma dano, como no CS.
+- Com o evento `land` passa a ir `damage` (o dano antes do acumulador) para o áudio e os medidores.
+
+### Vida mínima (`src/player/vitals.js` + `src/data/vitals.js`)
+- Estado puro: vida inteira (100), vivo, acumulador de dano fracionário, último dano { quanto, tipo, vida que saiu },
+  mortes, causa e tempo morto.
+- `applyDamage(vida, quanto, tipo, { god, cause })`: com `god`, nada; a parte inteira sai da vida agora, a fração vai
+  para o acumulador e, ao completar 1, sai 1 a mais (o `OnTakeDamage_Alive` do Source); vida ≤ 0 → morte com a causa
+  (a vida para em 0).
+- Colete e capacete são lidos do `Loadout` (o HUD de teste mostra); os tipos de dano nos dados dizem se o colete vale:
+  `queda` e `mundo` (console, fora do set) não passam pelo colete. A fórmula do colete contra bala, explosão e faca entra
+  na Fase 4, com as armas.
+- Eventos: `EV.PLAYER_HURT` { damage (vida que saiu), amount (dano como veio), kind, health, armor },
+  `EV.PLAYER_DEATH` { cause, kind, text }, `EV.PLAYER_SPAWN` { position }.
+
+### Morte e volta (modo livre)
+- **Morto**: o comando do tick fica vazio (sem movimento, pulo, agachar nem troca de item; o corpo só termina de assentar
+  com o atrito e a gravidade); o olhar continua livre; a câmera desce até 12 u acima dos pés e tomba 35° em 0,5 s (com
+  saída suave; só desce com "reduzir movimento"); etiqueta de fita no centro com a causa ("Você se esborrachou", "Caiu do
+  set", "Desistiu", "Amassado pelo console") e "volta em 2 s" contando.
+- **Volta** em 2 s (o tempo do Mata-mata na spec) no **ponto de volta**: o último teleporte do console neste mapa
+  (`estacao`, `setpos`), senão o spawn do mapa — morrer da prancha de 1310 devolve à prancha. Vida 100, acumulador 0;
+  estado de movimento zerado (velocidade, stamina, agachar, slide e recarga, paredes usadas); precisão e luneta
+  zeradas; medidores interrompidos; evento `EV.PLAYER_SPAWN`. A proteção de 1,5 s depois de nascer é dos modos (Fase 8).
+- **Ponto que não se sustenta** (`src/modes/returnPoint.js`): se o mundo mata o jogador — queda fatal, cair do set, ou
+  cair do set com `god` — antes de ele ficar de pé, vivo, no chão desde que chegou no ponto (teleporte para o vazio ou
+  para o alto), o ponto sai e a volta é no spawn; senão cada volta repetiria a mesma morte a cada 2 s. Morte pelo
+  console (`kill`, `hurtme`) não julga o ponto.
+- **Cair para fora do set** (1500 u abaixo do chão do mapa) passa a matar ("Caiu do set"); com `god`, volta ao spawn como
+  antes (com o aviso).
+- **Console** (`src/debug/vitalsCommands.js`): `kill` (o do CS: morte na hora) e `hurtme <n>` (o cheat do Source: dano
+  do tipo mundo; `god` segura).
+
+### HUD de teste (o HUD de massinha é da Fase 10)
+- Etiqueta de fita "vida 100 · colete 0" no topo, ao lado de "na mão"; ao tomar dano o número pisca e aparece a vida que
+  saiu ("−26") por 0,9 s.
+- Etiqueta da morte no centro da tela, acima da mira; o "clique para jogar" continua funcionando por baixo dela.
+- Dicas dos três dispositivos citam o slide (Ctrl correndo / B correndo / botão agachar correndo) e o wall-jump (pulo no
+  ar perto da parede).
+- Sem elemento visual novo: a 3.4 reaproveita a etiqueta de fita e as peças e materiais da pista (item 11 do moodboard);
+  o HUD de massinha (Fase 10) e a morte por amassamento (Fase 5) terão pesquisa própria.
+
+### Pista (números em `src/data/pista.js`; no layout, o grupo da parede sul, as marcas da faixa e as notas da tábua)
+Os números saíram da simulação com o código pronto e os testes os fixam:
+- **Poço (5)**: 144 × 144 u por dentro (x −2522…−2378, z 78…222) e 224 u de altura — com 3 paredes o ápice chega a
+  ~205 u e nunca sai (24 ordens × 3 largadas × 2 distâncias de pulo no teste); com as 4 sai por cima da parede leste e
+  fica na prancha de saída; porta de 64 × 88 u; as três peças da parede sul formam uma parede só (grupo `poco-sul`);
+  faixas numeradas com o centro a 152 u (acima da porta); prancha de saída e torre de blocos de faia a 224 u.
+- **Zigue-zague (5)**: corredor de 144 u (x −1822…−1678), painéis de 136 u (oeste 564–700 e 292–428, leste 428–564 e
+  156–292), plataformas A (z 700–900) e B (z −44–156) a 128 u, vão de 544 u — maior que qualquer pulo correndo ou bhop
+  (~210 u); passa com a faca e com a AK, com folga de altura na borda de B; a rampa de 30° (144 u de largura) continua
+  subindo à plataforma A. Ponto `ziguezague` na plataforma A (−1750, 860) olhando para B.
+- **Faixa de slide (6)**: faixa de −2600 a −1500 em x; linha de largada de fita em x = −2080 (520 u de corrida desde o
+  ponto `faixa`); as quatro traves na ordem do limbo a 32, 60, 88 e 116 u da linha (régua 70, lápis 64, régua de aço 58,
+  espeto 55) sobre apoios de 20 u (z 1175 e 1365) com as etiquetas em z = 1140; marcas de fita a cada 50 u até 400 u da
+  linha, com os números em z = 1400. Em pé bate na primeira trave; deslizando passa pelas quatro (a faca deslizando sob
+  as quatro, a AK sob as três primeiras e agachada na saída sob a quarta). O gabarito de portais não muda. Ponto novo
+  `traves` na linha de largada (−2104, 1270); apelidos da estação 6: `vaos`, `deslizar` e `agachar` (o `traves` virou
+  ponto).
+- **Torre (7)**: anotações da tábua "200 · sem dano", "420 · o limite seguro", "600 · −26", "900 · −62" e "1310 · fatal"
+  (acima do seu risco), e um risco a mais onde a queda do repouso passa a matar (1280 u, "daqui para cima, fatal"); a
+  tábua de crescimento cresce para 1460 u para a nota de cima caber. As notas são decalques voltados para fora, lidos de
+  baixo para cima na metade direita de quem olha a tábua de fora.
+
+### Debug, console e dados
+- **`cl_showpos`**, linhas novas: vida (colete, acumulado, último dano e tipo, mortes e, morto, a causa e a contagem);
+  slide (estado, tempo, recarga, último slide: distância, tempo, velocidade de entrada e de saída, motivo); parede
+  (último contato: normal, peça e idade em ticks, paredes usadas, wall-jumps no voo, espera e o total).
+- **Medidor de salto**: wall-jumps de cada voo, o dano de cada pouso e o recorde de wall-jumps seguidos.
+- **Gráfico dos 4 s**: faixa nos ticks de slide e marca em cada wall-jump (marcas novas na telemetria).
+- **`r_colisao`**: o contato de parede da sonda (segmento pela normal numa cor própria, enquanto vale a tolerância).
+- **`sv_*` novas** (faixa e ajuda no console pelo `SV_VARS`; `sv_reset` restaura; no online o host replica): `sv_slide`
+  1, `sv_slide_speed` 1,2, `sv_slide_time` 0,6, `sv_slide_cooldown` 1, `sv_slide_friction` 0,12, `sv_walljump` 1,
+  `sv_walljump_up` 289,41, `sv_walljump_maxspeed` 286, `sv_falldamage_scale` 1.
+- **`src/data/movement.js`**: `SLIDE` (entrada 0,8 × item, controle lateral 0,566 × item/s, 0,35 s no ar, fim abaixo de
+  0,34 × item), `WALLJUMP` (alcance 4 u, |n.y| ≤ 0,34, tolerância 0,12 s, buffer 0,15 s, espera 0,35 s, subida máxima
+  220,2 u/s, 30° para fora, 45° para a mesma parede, anel de 16 paredes usadas), `FALL` (819,756 e 1413,373 u/s).
+- **`src/data/vitals.js`**: vida máxima 100, volta em 2 s, câmera da morte (12 u, 35°, 0,5 s), "−n" por 0,9 s, tipos de
+  dano (colete ou não) e os textos das causas.
+- **Eventos novos**: `EV.PLAYER_SLIDE`, `EV.PLAYER_WALLJUMP`, `EV.PLAYER_HURT`, `EV.PLAYER_DEATH`, `EV.PLAYER_SPAWN`;
+  `EV.PLAYER_LAND` ganha `damage`.
+
+### Arquivos
+- Novos: `src/player/slide.js`, `src/player/wallJump.js`, `src/player/vitals.js`, `src/physics/wallProbe.js`,
+  `src/data/vitals.js`, `src/debug/vitalsCommands.js`, `src/modes/returnPoint.js`; testes `wallProbe`, `slide`,
+  `wallJump`, `vitals` e `returnPoint`.
+- Alterados: dados (`movement`, `pista`), física (`colliders`, `collisionBody`, `collisionWorld`,
+  `characterController`), jogador (`movement`, `duck`, `footsteps`, `playerPawn`, `telemetry`), `core/events`,
+  `modes/matchState`, `ui/sandboxHud` + `styles/hud.css`, debug (`showPos`, `jumpMeter`, `speedGraph`, `physicsDebug`,
+  `commands`) + `styles/debug.css`, pista (`pieces`, `colliders`, `layoutAdvanced`, `layoutTower`); testes que ganham
+  casos (`pistaLayout`, `pistaMovement`, `pistaFuzz`, `movementFuzz`, `playerPawn`, `jumpMeter`, `movementData`,
+  `tacticalMovement`); `docs/phases/phase-3.4-plan.md` e o relatório no `PROGRESS.md`.
+
+### Testes (Node, sem navegador)
+- **Sonda**: acha a parede ao alcance (e não além); ignora chão, teto, topo de parede e rampa; devolve a peça certa e o
+  grupo; a mais próxima entre duas.
+- **Slide**: condições de começo (80%, Shift, no ar, recarga, spam, pulo apertado, `sv_slide 0`); impulso de 1,2×; 0,6 s;
+  soltar encerra; curva do atrito (204,7 u/s e 151,2 u com a faca); controle lateral sem ganhar velocidade; rampa
+  acelera na descida e freia na subida; cápsula agachada na hora (passa a trave de 55; em pé bate na de 70); saída sem
+  parada seca; pulo mantém o embalo com o teto de 286 e sobe 9 u com o Ctrl seguro; sem passos; eventos com os motivos;
+  recarga de 1 s.
+- **Wall-jump**: buffer de 0,15 s (só no ar); tolerância de 0,12 s; subida máxima; espera de 0,35 s; a mesma parede só
+  depois do chão; grupo = uma parede; faces da caixa = paredes diferentes; painéis separados no mesmo plano =
+  diferentes; tubo dentro de 45° = a mesma; direção do chute (olhar, espelho, mínimo de 30°, de frente sai pela normal);
+  piso pelo item e teto de 286; 289,41 × stamina e o custo de stamina; `sv_walljump 0`.
+- **Vida e queda**: curva de dano (os valores acima), acumulador, `god`, duckbug sem dano, colete ignorado,
+  `sv_falldamage_scale`; morte (comando vazio, câmera, "reduzir movimento") e volta com o estado zerado; `kill` e
+  `hurtme`; o ponto de volta que não se sustenta sai e o do console fica.
+- **Pista** (colisão real): o poço exige as 4 paredes (com 3 não sai); o zigue-zague passa com a faca e com a AK e sem
+  wall-jump cai no vão; o slide passa as quatro traves e em pé bate na primeira; as pranchas da torre dão 0, 0, ~26,
+  ~62 e morte; as notas da tábua voltadas para fora, na metade direita, terminando no risco.
+- **Regressão**: os 10 min simulados na sala e na pista com slides e wall-jumps na entrada aleatória (fases de "toques
+  de slide" e mais de 20 slides e 20 wall-jumps por rodada) — nenhuma penetração, nunca preso —, e o resultado igual
+  bit a bit com todo o estado novo.
+
+### Ajustes feitos na implementação
+- Slide não começa com o pulo apertado: Ctrl + Espaço correndo segue o pulo agachado do CS.
+- Pulo do slide com o Ctrl seguro sobe os pés 9 u (o pulo agachado do CS), por varredura (`raise` no controlador).
+- Chute do wall-jump espelhado no plano da parede quando o olhar entra nela (antes: reto pela normal).
+- Buffer do pulo armado só por apertos no ar (no chão o aperto é o pulo do CS).
+- Saída do slide: "a velocidade só cai" no lugar de "o atrito até caber" (a aceleração do tick não passa da velocidade
+  de antes dela).
+- Idade do contato de parede anda na sonda (passo 14) e não nos relógios do passo 2: a tolerância conta do começo do
+  tick seguinte (7 ticks depois de desencostar).
+- O corpo da parede é a chave dada pelo `CollisionWorld` na ordem de entrada (o `id` global quebrava o determinismo).
+- "Velocidade do item" é o `s.baseSpeed` do estado (o teto do tick sem agachar, andar nem stamina).
+- Controlador: `groundMove` (varredura, degrau e grudar no chão) compartilhado pelo andar e pelo slide, e `raise`.
+- Poço a 224 u (o desenho estimava ~210 pelo protótipo) e zigue-zague 144/136/544 (dentro das faixas do desenho).
+- Notas da tábua de crescimento: a base do decalque estava espelhada desde a 3.3 (normal para dentro da tábua) e as notas
+  não apareciam de fora — achado no navegador; agora saem para fora, com teste no `pistaLayout`.
+- Ponto de volta que não se sustenta — achado no navegador (`setpos` abaixo do set prendia o jogador num ciclo de morte
+  a cada 2 s): `src/modes/returnPoint.js`.
+- Fuzz: 25% das fases são "toques de slide" (correndo para a frente, Ctrl seguro 24 de cada 48 ticks, sem pulo nem
+  andar), para a entrada aleatória deslizar de verdade.
+- `kill` e `hurtme` num arquivo próprio (`vitalsCommands.js`), registrado pelo `commands.js`.
+
+### Medições (2026-09-25, projeto real no navegador, entrada pelo `InputManager`)
+- Slide na faixa (faca): 151,2 u em 0,61 s, 300 → 205 u/s, motivo `tempo`, sob as quatro traves.
+- Poço com as 4 paredes: ápice 253 u, de pé na prancha de saída a 230,03 u, 4 wall-jumps.
+- Zigue-zague: AK e faca pousam em B com 4 wall-jumps (folga na borda de B: 38,7 u com a AK, 136,7 u com a faca; a
+  entrada do navegador chega um tick depois da dos testes, que medem mais de 40 u com as duas).
+- Prancha de 600 andando, com colete 100: pouso a 968,75 u/s, dano 25,1 (o colete não reduz), "vida 75 · colete 100" e
+  "−25"; `hurtme 26` → 49; `god` segura.
+- Prancha de 1310 correndo: dano 105,1, "Você se esborrachou" com "volta em 2 s", câmera baixa e tombada, volta na
+  prancha em 2,0 s com vida 100; `kill` → "Desistiu" e volta ao mesmo ponto.
+- Ponto de volta: `setpos` abaixo do set → uma morte ("Caiu do set") e volta no spawn, sem repetir; queda de 2000 u →
+  volta no spawn; na sala, `setpos` e `kill` na mesma chamada → volta no ponto.
+- Anotações da tábua legíveis de fora ("600 · −26", "daqui para cima, fatal", "1310 · fatal").
+- Pista: 31 desenhos estáticos, 288 mil triângulos, colisão com 3532 triângulos. Memória: menu com 2 geometrias / 33
+  texturas / 20 programas nas três saídas e pista com 42 / 79 / 41 nas três entradas; ouvintes de `player:*` zerados no
+  menu; heap de volta a ~16 MB depois da coleta. Console sem erros do jogo.
+
+### Aceite da 3.4
+- [x] Slide: até 0,6 s, soltar encerra, passa sob as traves, rampa acelera, recarga de 1 s, fim sem parada seca.
+- [x] Wall-jump: o poço exige as 4 paredes, o zigue-zague passa, a mesma parede só depois do chão, tolerância e buffer.
+- [x] Dano de queda: 420 u seguro, curva pela razão do CS:GO, 1310 fatal, colete não reduz, `god` e acumulador.
+- [x] Morte e volta em 2 s na sala e na pista; cair do set mata.
+- [x] `cl_showpos`, medidor, gráfico, `r_colisao`, `sv_*` e HUD com a vida funcionando.
+- [x] Testes passando (255: os antigos e os novos, com os 10 min simulados e o determinismo); sem erros do jogo no
+      console; sem vazamento em 3 ciclos menu ↔ pista; arquivos abaixo de 600 linhas; números em `src/data/`; conferido
+      no navegador com o projeto real.
 
 ## 3.5 — Sensação (plano)
 - Câmera: head-bob, inclinação ao andar de lado, no slide e no wall-jump, mergulho no pouso com mola — tudo com

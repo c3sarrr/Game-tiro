@@ -3,7 +3,9 @@
 // MapInstance: { id, scene, spawn:{position, yaw, pitch}, bounds: Box3|null, frame?(dt, camera), tick?(dt), dispose(),
 //   post?: {context, exposure}, move?: {speedScale}, panel?: {root, open(), close()} (Tab solta o mouse para ele),
 //   staticShadows?: boolean (nada que projeta sombra se move: o mapa de sombra só é refeito quando algo pede),
-//   collision?: CollisionWorld (mapa andável: o jogador anda com a cápsula; sem ela, voa com a câmera livre) }
+//   collision?: CollisionWorld (mapa andável: o jogador anda com a cápsula; sem ela, voa com a câmera livre),
+//   stations?: [{ number, id, label, aliases, spots: [{ id, label, position, yaw, pitch }] }] (console `estacao`;
+//   src/maps/stations.js) }
 // O console (`map <id>`), o lobby e o menu listam o que estiver registrado aqui.
 
 const MAPS = new Map();

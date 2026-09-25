@@ -123,9 +123,15 @@ export const EV = Object.freeze({
   MAP_UNLOADED: 'map:unloaded', // {id}
   LOADOUT: 'loadout:change', // {owner, loadout, received?: {kind, id, slot}}
   PLAYER_JUMP: 'player:jump', // {surface, speed, audible}
-  PLAYER_LAND: 'player:land', // {speed, surface, audible, heavy} — velocidade de queda no pouso (u/s)
+  PLAYER_LAND: 'player:land', // {speed, surface, audible, heavy, damage} — queda no pouso (u/s) e o dano
   PLAYER_DUCK: 'player:duck', // {ducked}
   PLAYER_STEP: 'player:step', // {foot, x, y, z, surface, volume, speed, audible} — áudio e audição dos bots
   PLAYER_WEAPON: 'player:weapon', // {item, previous, slot} — item novo na mão
   PLAYER_ZOOM: 'player:zoom', // {level, fov} — nível da luneta (fov na referência de 90°; null sem zoom)
+  // {phase: 'start', speed, from, surface} ou {phase: 'end', reason, time, distance, entrySpeed, exitSpeed}
+  PLAYER_SLIDE: 'player:slide',
+  PLAYER_WALLJUMP: 'player:walljump', // {nx, nz, surface, speed, count, body, part} — normal da parede, n.º no voo
+  PLAYER_HURT: 'player:hurt', // {damage, amount, kind, health, armor} — vida que saiu, dano como veio, tipo, vida
+  PLAYER_DEATH: 'player:death', // {cause, kind, text} — causa (src/data/vitals.js), tipo do dano e o texto
+  PLAYER_SPAWN: 'player:spawn', // {position} — volta ao jogo
 });

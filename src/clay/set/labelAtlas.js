@@ -40,6 +40,44 @@ export function labelRect(cell, textWidth, atlasWidth, atlasHeight) {
 }
 
 /**
+ * Escreve `text` "à mão" num contexto 2D: letra a letra, com giro, variação de linha de base, de tamanho e de
+ * espaçamento, e o traço engrossado de caneta de ponta redonda (contorno + preenchimento). `font` com "{px}" no lugar
+ * do tamanho. Usa a cor/estilo atuais do contexto. Devolve o x depois da última letra.
+ * @param {CanvasRenderingContext2D} g
+ * @param {{x:number, baseline:number, size:number, font:string, rng:RNG, stroke?:number, wobble?:number}} opts
+ */
+export function drawHandwriting(g, text, { x, baseline, size, font, rng, stroke = 0.085, wobble = 1 }) {
+  let cx = x;
+  g.save();
+  g.textAlign = 'left';
+  g.textBaseline = 'alphabetic';
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  for (const ch of text) {
+    const s = size * rng.float(1 - 0.07 * wobble, 1 + 0.07 * wobble);
+    g.font = font.replace('{px}', String(Math.round(s)));
+    const adv = g.measureText(ch).width;
+    g.save();
+    g.translate(cx + adv / 2, baseline + rng.float(-0.035, 0.035) * wobble * size);
+    g.rotate(rng.float(-0.06, 0.06) * wobble);
+    g.globalAlpha = rng.float(0.9, 1);
+    g.lineWidth = s * stroke;
+    if (stroke > 0) g.strokeText(ch, -adv / 2, 0);
+    g.fillText(ch, -adv / 2, 0);
+    g.restore();
+    cx += adv * rng.float(0.98, 1.04);
+  }
+  g.restore();
+  return cx;
+}
+
+/** Largura natural (sem tremor) de `text` na fonte `font` de tamanho `px`, com folga de 4%. */
+export function handwritingWidth(g, text, font, px) {
+  g.font = font.replace('{px}', String(px));
+  return [...text].reduce((w, ch) => w + g.measureText(ch).width, 0) * 1.04;
+}
+
+/**
  * Desenha as etiquetas e devolve o atlas.
  * @param {string[]} texts
  * @param {{width:number, cellHeight:number, columns:number, font:string, seed?:string, anisotropy?:number}} opts
@@ -61,33 +99,18 @@ export function bakeLabelAtlas(texts, { width, cellHeight, columns, font, seed =
   g.textBaseline = 'alphabetic';
   const px = Math.round(cellHeight * 0.66);
   const baseFont = font.replace('{px}', String(px));
+  g.font = baseFont;
   const labels = texts.map((text, i) => {
     const cell = layout.cells[i];
     const rng = new RNG(`${seed}:${i}:${text}`);
     // Medida sem jitter para decidir a escala (texto longo encolhe para caber na célula, com folga de 4%).
-    g.font = baseFont;
-    const natural = [...text].reduce((w, ch) => w + g.measureText(ch).width, 0) * 1.04 + px * 0.2;
+    const natural = handwritingWidth(g, text, font, px) + px * 0.2;
     const fit = Math.min(1, (cell.w - 8) / Math.max(natural, 1));
     const size = Math.max(10, Math.round(px * fit));
     const baseline = cell.y + cell.h * 0.74;
-    let x = cell.x + size * 0.12;
-    for (const ch of text) {
-      const s = size * rng.float(0.93, 1.07);
-      g.font = font.replace('{px}', String(Math.round(s)));
-      const adv = g.measureText(ch).width;
-      g.save();
-      g.translate(x + adv / 2, baseline + rng.float(-0.035, 0.035) * size);
-      g.rotate(rng.float(-0.06, 0.06));
-      // Caneta permanente de ponta redonda: o traço da fonte engrossa com um contorno redondo (a tinta
-      // espalha no crepe) e a pressão varia um pouco de letra para letra.
-      g.globalAlpha = rng.float(0.9, 1);
-      g.lineWidth = s * 0.085;
-      g.strokeText(ch, -adv / 2, 0);
-      g.fillText(ch, -adv / 2, 0);
-      g.restore();
-      x += adv * rng.float(0.98, 1.04);
-    }
-    g.globalAlpha = 1;
+    // Caneta permanente de ponta redonda: o traço da fonte engrossa com um contorno redondo (a tinta espalha no crepe)
+    // e a pressão varia um pouco de letra para letra.
+    const x = drawHandwriting(g, text, { x: cell.x + size * 0.12, baseline, size, font, rng });
     const textWidth = Math.min(cell.w, x - cell.x + size * 0.12);
     return { text, rect: labelRect(cell, textWidth, layout.width, layout.height), aspect: textWidth / cell.h };
   });
