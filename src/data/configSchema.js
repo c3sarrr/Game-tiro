@@ -2,9 +2,9 @@
 // Cada fase acrescenta aqui as chaves que passa a consumir. Chaves `transient` não são salvas.
 
 import { defaultBindings } from './bindings.js';
-import { ACTION_IDS } from './actions.js';
+import { ACTION_IDS, TOGGLE_MODE, TOGGLE_MODES } from './actions.js';
 import { PRESET_IDS } from './qualityPresets.js';
-import { defaultTouchLayout } from './touchLayout.js';
+import { DEFAULT_TOUCH_BUTTONS, TOUCH_BUTTONS_SINCE, TOUCH_LAYOUT_VERSION, defaultTouchLayout } from './touchLayout.js';
 
 export const BINDING_RE = /^(key:[A-Za-z0-9]+|mouse:[0-4]|wheel:(up|down)|pad:button:\d{1,2}|pad:axis:\d[+-])$/;
 
@@ -22,7 +22,11 @@ export function validateBindings(value) {
   return out;
 }
 
-function validateTouchLayout(value) {
+/**
+ * Valida o layout de toque salvo. Um layout de versão antiga ganha os botões padrão criados depois dela (os que ainda
+ * não tiver); os botões que o jogador já tem ficam como estão.
+ */
+export function validateTouchLayout(value) {
   if (!value || !Array.isArray(value.buttons)) return undefined;
   const clamp01 = (n) => Math.min(1, Math.max(0, Number(n) || 0));
   const buttons = value.buttons
@@ -36,7 +40,15 @@ function validateTouchLayout(value) {
       r: Math.min(0.2, Math.max(0.025, Number(b.r) || 0.05)),
       opacity: Math.min(1, Math.max(0.15, Number(b.opacity) || 0.7)),
     }));
-  return { version: 1, buttons };
+  const version = Number.isInteger(value.version) && value.version > 0 ? value.version : 1;
+  for (const [since, ids] of Object.entries(TOUCH_BUTTONS_SINCE)) {
+    if (version >= Number(since)) continue;
+    for (const id of ids) {
+      if (buttons.length >= 32 || buttons.some((b) => b.id === id)) continue;
+      buttons.push({ ...DEFAULT_TOUCH_BUTTONS.find((b) => b.id === id) });
+    }
+  }
+  return { version: TOUCH_LAYOUT_VERSION, buttons };
 }
 
 export const CONFIG_SCHEMA = Object.freeze({
@@ -107,6 +119,9 @@ export const CONFIG_SCHEMA = Object.freeze({
   },
   'controls.invertY': { type: 'bool', default: false, label: 'Inverter eixo Y (mouse)', group: 'controls' },
   'controls.rawInput': { type: 'bool', default: true, label: 'Entrada bruta do mouse', group: 'controls' },
+  'controls.walkMode': {
+    type: 'enum', options: TOGGLE_MODES, default: TOGGLE_MODE.HOLD, label: 'Andar silencioso (teclado)', group: 'controls',
+  },
 
   // ---------------- Controles: controle (gamepad) ----------------
   'controls.pad.lookSpeed': {
@@ -135,12 +150,18 @@ export const CONFIG_SCHEMA = Object.freeze({
   'controls.pad.icons': {
     type: 'enum', options: ['auto', 'playstation', 'xbox', 'generico'], default: 'auto', label: 'Ícones de botão', group: 'pad',
   },
+  'controls.pad.walkMode': {
+    type: 'enum', options: TOGGLE_MODES, default: TOGGLE_MODE.TOGGLE, label: 'Andar silencioso (controle)', group: 'pad',
+  },
 
   // ---------------- Controles: toque ----------------
   'controls.touch.lookSensitivity': {
     type: 'number', min: 0.1, max: 3, step: 0.05, default: 1, label: 'Sensibilidade do olhar (toque)', group: 'touch',
   },
   'controls.touch.autoFire': { type: 'bool', default: false, label: 'Tiro automático', group: 'touch' },
+  'controls.touch.walkMode': {
+    type: 'enum', options: TOGGLE_MODES, default: TOGGLE_MODE.TOGGLE, label: 'Andar silencioso (toque)', group: 'touch',
+  },
   'controls.touch.gyro': { type: 'bool', default: false, label: 'Giroscópio para mirar', group: 'touch' },
   'controls.touch.gyroSensitivity': {
     type: 'number', min: 0.1, max: 3, step: 0.05, default: 1, label: 'Sensibilidade do giroscópio', group: 'touch',
@@ -159,6 +180,9 @@ export const CONFIG_SCHEMA = Object.freeze({
     type: 'enum', options: ['off', 'compacto', 'completo'], default: 'off', label: 'Overlay de desempenho', group: 'debug',
   },
   'debug.touchGuides': { type: 'bool', default: false, label: 'Mostrar zonas e botões de toque', group: 'debug' },
+  'debug.collision': { type: 'bool', default: false, transient: true, label: 'Mostrar a colisão (r_colisao)', group: 'debug' },
+  'debug.showPos': { type: 'bool', default: false, transient: true, label: 'Posição e velocidade (cl_showpos)', group: 'debug' },
+  'debug.thirdPerson': { type: 'bool', default: false, transient: true, label: 'Câmera em terceira pessoa', group: 'debug' },
   'debug.consoleHistory': {
     type: 'array', default: () => [], label: 'Histórico do console', group: 'internal',
     validate: (v) => v.filter((s) => typeof s === 'string').slice(-50),

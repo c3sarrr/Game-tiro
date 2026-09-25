@@ -25,6 +25,7 @@ import { registerCommands } from './debug/commands.js';
 import { TouchGuides } from './debug/touchGuides.js';
 import { Roster } from './modes/roster.js';
 import { Loadout } from './player/loadout.js';
+import { createSvVars } from './player/movementVars.js';
 import { MatchState } from './modes/matchState.js';
 import { MenuState } from './ui/menuState.js';
 import { LobbyState } from './ui/lobbyState.js';
@@ -89,12 +90,13 @@ async function main() {
   const cheats = new Cheats(events);
   const roster = new Roster({ events, rng });
   const localLoadout = new Loadout();
+  const sv = createSvVars(); // variáveis sv_* de movimento (valores do CS:GO; o console troca)
   const focusNav = new FocusNavigator({ input });
   const toasts = new Toasts(uiRoot);
 
   const services = {
     events, log, store, config, render, clay, set, sdf, quality, input, rebinder, loop, states, rng, cheats, roster,
-    localLoadout, focusNav, toasts, uiRoot, debugRoot, touchLayer,
+    localLoadout, sv, focusNav, toasts, uiRoot, debugRoot, touchLayer,
   };
   services.overlay = new DebugOverlay(services);
   services.console = new DebugConsole(services);

@@ -12,6 +12,7 @@ const ENUM_LABELS = Object.freeze({
   off: 'Desligado', compacto: 'Compacto', completo: 'Completo',
   leve: 'Leve', medio: 'Médio', personalizado: 'Personalizado',
   desligado: 'Desligado', meia: 'Meia resolução', cheia: 'Resolução cheia', sutil: 'Sutil', forte: 'Forte',
+  segurar: 'Segurar', alternar: 'Alternar',
 });
 
 const KEY_FORMATS = Object.freeze({

@@ -19,12 +19,19 @@ O servidor de desenvolvimento só atende GET/HEAD e nunca serve arquivos ocultos
 
 - `src/main.js` é a raiz de composição: cria os serviços e registra os estados. O objeto `services`
   (events, log, store, config, render, quality, input, rebinder, loop, states, rng, cheats, roster,
-  localLoadout, focusNav, toasts, uiRoot, debugRoot, touchLayer, overlay, console) é passado aos estados.
+  localLoadout, sv, focusNav, toasts, uiRoot, debugRoot, touchLayer, overlay, console) é passado aos estados.
+  `sv` são as variáveis `sv_*` de movimento em tempo de execução (valores do CS:GO; no online o host as replica).
 - Loop: `input.frameStart()` (controle + olhar) → N ticks de 1/64 s (`input.sampleTick()` + `states.tick`)
   → `states.frame(alpha)` → `render.render()` → overlay. Olhar por quadro; ações/movimento por tick.
 - Estados: boot (`core/bootState.js`) → menu (`ui/menuState.js`) → lobby (`ui/lobbyState.js`) →
   partida (`modes/matchState.js`) → resultado (`ui/resultState.js`). Transições em `core/stateMachine.js`.
 - Mapas se registram em `src/maps/registry.js` (import em `src/maps/index.js`); `map <id>` e o lobby listam o registro.
+- Colisão (Fase 3): mapa andável entrega `collision` no MapInstance — um `CollisionWorld` montado com o
+  `ColliderBuilder` (`src/physics/colliders.js`), separado da malha visual (boil, digitais e empeno não viram
+  tropeço; massinha densa vira forma simples; props lisos entram com a própria malha por `object`). Com ela a partida
+  usa o `PlayerPawn` (anda com a cápsula); sem ela, a câmera livre. O movimento é `playerMove(state, cmd, env)`,
+  função sobre dados que a predição da rede (Fase 9) e os bots (Fase 7) vão reaproveitar só gerando outro `cmd`.
+  Números de movimento em `src/data/movement.js`, materiais de superfície em `src/data/surfaces.js`.
 - Render: `render/postPipeline.js` (cena → alvo HDR MSAA com profundidade → passes de CENA (AO, DOF: leem a
   profundidade) → camadas (arma, alvo próprio com profundidade, composição "sobre") → passes HDR de luz (bloom) →
   OutputPass (tone mapping) → passes LDR (SMAA, lente) → tela). `render/postEffects.js` monta os passes, liga-os
@@ -300,16 +307,256 @@ Aceite da Fase 2 (PROMPT, Fase 2):
 Pendências conhecidas (não bloqueiam a Fase 3): validação em GPU integrada real; varredura medindo em duas
 resoluções (custo fixo × por pixel); braço de rig e mão do animador (SMR1/SMR4/SMR7) entram com os mapas (Fase 6).
 
-## Próxima: Fase 3 — Movimento, física e colisão
+## Fase 3 — Movimento, física e colisão (em andamento)
 
-Seção 0.6 inteira (fonte: `CLAUDE.md.md`, Fase 3), em subfases, uma por conversa:
-- Controlador de personagem cápsula com colisão BVH (`three-mesh-bvh`), degraus, rampas e deslizamento em paredes.
-- Andar, correr, andar silencioso, agachar, pular, air-strafe, bunny hop com penalidade, slide (~0,6 s com cooldown),
-  wall-jump (1 por contato, reseta no chão), dano de queda a partir de ~420 u.
-- Velocidade máxima por arma e inaccuracy de movimento exposta para o sistema de armas (Fase 4); números em
-  `src/data/`.
-- Squash & stretch no pouso, pegadas que marcam a massa e somem, head-bob e inclinação de câmera configuráveis.
-- Pista de testes de movimento (rampas, degraus, paredes de wall-jump, vãos para slide) montada com o kit e os
-  materiais do set — pesquisar referências no Pinterest antes do visual da pista.
-- Aceite: movimento responde como CS no chão (counter-strafe funcional), slide e wall-jump fluidos, nenhum
-  atravessamento de parede em 10 min de teste.
+Seção 0.6 inteira (fonte: `CLAUDE.md.md`, Fase 3). Plano técnico e estado das cinco subfases em
+`docs/phases/phase-3.md` — aprovado em 2026-09-24: colisão por **varredura contínua exata** da cápsula com o
+movimento do Source por cima; 3.1 colisão e controlador → 3.2 movimento tático CS → 3.3 pista de testes → 3.4 slide,
+wall-jump e dano de queda → 3.5 sensação e aceite. Uma subfase por conversa.
+
+### Subfase 3.1 — Colisão BVH e controlador cápsula ✅ (2026-09-25)
+
+Plano executado: `docs/phases/phase-3.1-plan.md` (os blocos de código estão sincronizados com a versão final). O
+jogador anda na sala de testes com a cápsula do CS (raio 16; 72 u em pé, 54 agachado) e os números do CS:GO
+(gravidade 800, pulo com ápice de 57 u, degrau de 18 u, chão andável até ~45,6°, atrito 5,2, aceleração 5,5 no chão
+e 12 no ar com desejo de 30 u/s, tick de 64 Hz). A varredura é exata (avanço conservador segmento–triângulo sobre o
+BVH): nada atravessa parede fina em nenhuma velocidade e o resultado é determinístico.
+
+Decisões tomadas na execução:
+- **Base chata para o chão** (o fundo reto da caixa do CS; o `bUseFlatBaseForFloorChecks` da Unreal): a cápsula
+  colide, o chão é o do disco dos pés. A primeira versão decidia o chão pelo contato da cápsula ("raio de apoio"):
+  o pulo em pé empoleirava na caixa de 64 u (reservada ao pulo agachado) e o avanço lento emperrava no espelho do
+  degrau — os cenários pegaram as duas coisas e ela foi trocada.
+- **Quina baixa** (`clipLowEdge`): aresta ou vértice pego pelo redondo de baixo da cápsula não dá impulso para cima
+  nem segura a cápsula pendurada.
+- **Desprender preferindo chão**: com o eixo dentro de parede fina cada face empurra para o seu lado; empurrão maior
+  que 8 u para um lugar sem chão perde para um lugar livre com chão.
+- **Volta ao spawn** de quem desliga o noclip fora do set e cai 1500 u abaixo do chão do mapa (com aviso).
+
+Correções achadas no navegador (cada uma virou regra ou teste): a borda do pote segurava o jogador ainda subindo
+(chão preso no teto da faixa de busca → face que passa da faixa é obstáculo); a aba da borda, virada para baixo,
+contava como chão (→ só face virada para cima); o canto andável da borda dava +67 u/s de subida (→ `clipLowEdge` em
+todo contato de quina baixa); desligar o noclip no meio da parede norte jogava o jogador para fora do set, em
+z −819,23 (→ preferência por chão; teste com a mesma parede); o `cl_showpos` cobria o overlay numa janela de 834 px
+(→ painéis de debug em fluxo, o `cl_showpos` desce para baixo do overlay em tela estreita).
+
+Arquivos criados:
+- `src/data/movement.js` — cápsula e base chata (`HULL`), `sv_*` do CS:GO com faixas e ajuda do console,
+  constantes do controlador (folga, sonda do chão, quina baixa, busca de espaço livre), agachar e câmera.
+- `src/data/surfaces.js` — materiais de superfície da colisão (atrito, fator de pulo, pegadas, volume do passo).
+- `src/player/movementVars.js` — objeto das `sv_*` em tempo de execução (trocar, limitar, restaurar).
+- `src/physics/geometryQueries.js` — consultas sem alocar: ponto–triângulo, segmento–segmento, segmento–triângulo,
+  raio–caixa e altura exata de um triângulo dentro do disco dos pés.
+- `src/physics/capsuleSweep.js` — varredura exata de cápsula contra triângulo (avanço conservador).
+- `src/physics/colliders.js` — `ColliderBuilder`: `box`, `cylinder`, `ramp`, `stairs`, `triangle`/`quad`, `geometry`,
+  `object`; material de superfície por triângulo.
+- `src/physics/collisionBody.js` — corpo com BVH (three-mesh-bvh, SAH), triângulos na ordem do BVH em
+  `Float64Array`, matriz rígida opcional.
+- `src/physics/collisionWorld.js` — `sweepCapsule` (o "trace" do Source), `deepestContact`, `canOccupy`,
+  `depenetrate`, `findFreeSpot` (com filtro), `supportBelow` (chão da base chata), `raycast`, estatísticas.
+- `src/physics/characterController.js` — porte do `gamemovement.cpp`: `tryPlayerMove` (+ `clipLowEdge`), `stepMove`,
+  `stayOnGround`, `categorizePosition`, `resolvePenetration`, `fits`, `lastContact`.
+- `src/player/moveCmd.js` — comando do tick (frente/lado, bits de botão, ângulos) a partir da entrada.
+- `src/player/movement.js` — `playerMove()` (FullWalkMove): agachar com troca de cápsula, gravidade em duas metades
+  por tick (antes e depois do movimento, como o Source), pulo, atrito, aceleração no chão e no ar, noclip e eventos
+  `jump`/`land`/`duck`/`unduck`.
+- `src/player/playerPawn.js` — jogador local: tick, olhar, câmera interpolada com suavização de degrau (0,06 s, teto
+  de 24 u), terceira pessoa com recolhimento na parede, teleporte, estatísticas e custo da física por tick.
+- `src/debug/consoleArgs.js` (leitura de 0/1, extraída de `commands.js`), `src/debug/movementCommands.js` (`sv_*`,
+  `sv_reset`, `r_colisao`, `cl_showpos`, `thirdperson`, `firstperson`), `src/debug/physicsDebug.js` (arame das
+  formas, cápsula, normal do chão e do último contato), `src/debug/showPos.js` (painel do `cl_showpos`).
+- Testes: `tests/movementData.test.js` (4), `physicsMath.test.js` (6), `capsuleSweep.test.js` (4),
+  `collisionWorld.test.js` (10), `characterController.test.js` (16), `movementFuzz.test.js` (2),
+  `playerPawn.test.js` (5) + utilitários `physicsTestUtils.js`, `worldTestUtils.js`, `playerTestUtils.js`.
+- `docs/phases/phase-3.md` (plano técnico da fase) e `docs/phases/phase-3.1-plan.md` (plano de implementação).
+
+Arquivos alterados:
+- `src/core/events.js` — `EV.PLAYER_JUMP`, `EV.PLAYER_LAND`, `EV.PLAYER_DUCK`.
+- `src/main.js` — serviço `sv`.
+- `src/data/configSchema.js` — `debug.collision`, `debug.showPos`, `debug.thirdPerson` (transitórias).
+- `src/data/sandbox.js` — spawn nos pés, espessura de colisão das paredes (6,4 u), laje do chão, `SANDBOX.fallOutDepth`.
+- `src/maps/registry.js` — contrato `collision` do MapInstance.
+- `src/maps/testRoom.js` — formas de colisão da sala (laje, paredes, pote/tampa/espátula com a própria malha,
+  boneco em cilindro): 3228 triângulos.
+- `src/modes/matchState.js` — `PlayerPawn` em mapas com colisão, vistas de debug ligadas à config, volta ao spawn de
+  quem cai do set, liberação da colisão ao sair.
+- `src/ui/sandboxHud.js` — dicas de andar (mapa com colisão) ou de voar (vitrine).
+- `src/debug/commands.js` — registra os comandos de movimento; `src/debug/overlay.js` — linha "física".
+- `styles/debug.css` — painéis fixos em fluxo (overlay à esquerda, `cl_showpos` à direita ou abaixo) e o `cl_showpos`.
+
+Como testar:
+1. `npm test` → 113 testes passando (~4 s; os 10 min simulados levam ~1,5 s).
+2. `npm run dev`, abrir http://localhost:5173 → menu → **Sala de testes** (ou console `map testroom`) → clicar para
+   jogar. WASD anda, Espaço pula, Ctrl agacha (no ar, é o pulo agachado).
+3. Andar contra as paredes, o pote, a tampa e o boneco de referência: desliza, não atravessa, quina sem tremer.
+   Subir na espátula deitada (degrau de ~8,6 u, câmera suave).
+4. Pote: de fora, o pulo em pé não alcança a borda e o agachado alcança; lá dentro, o pulo em pé sai.
+5. Console (`` ` ``): `r_colisao 1` (arame da colisão, cápsula, normal do chão e do último contato), `cl_showpos 1`,
+   `thirdperson` / `firstperson`, `sv_gravity 400` (pulo de ~114 u) e `sv_reset`, `setpos x y z` / `getpos` (pés do
+   jogador), `noclip` (voar; desligar dentro de uma parede tira o jogador pelo lado do chão; desligar fora do set →
+   cai e volta ao spawn com o aviso).
+6. F3 duas vezes: overlay completo com a linha "física" (µs/tick, varreduras, sobreposições, triângulos, chão/ar).
+
+Medições (RTX 2070, Chrome/ANGLE; sala de testes, 3228 triângulos de colisão):
+- Física do jogador: ~73 µs/tick correndo em círculo, pulando, agachando e raspando nas paredes e no pote (média
+  móvel; ~1,1 varredura e ~2 sobreposições por tick); 31–45 µs/tick parado — ~0,5% de um núcleo a 64 Hz. Sem
+  isolamento de origem o `performance.now()` do navegador tem resolução de 100 µs: vale a média (p99 ≤ 400 µs).
+- Node: 10 min simulados (38.400 ticks de entrada aleatória, com as checagens a cada tick) em ~1,5 s.
+- Colisão: empurrões de até 3500 u/s contra paredes, pote e boneco param na distância exata da folga; o pulo em pé
+  de fora do pote chega a 57,03 u (borda ~62 u); `sv_gravity 400` dá ápice de 114,03 u; quem cai do set volta ao
+  spawn em ~2 s.
+- Memória: sala com 30 geometrias / 37 texturas / 29 programas nas três entradas; menu com 2 / 34 / 18 nas três
+  saídas; heap JS de 19–21 MB depois da coleta.
+- Console sem erros do jogo. Duas mensagens que não são do jogo: o aviso `X4122 … double precision` do compilador de
+  shader do Direct3D (ANGLE) sobre as constantes do chunk `packing` do próprio three.js (`UnpackDownscale = 255/256`,
+  vem da sombra/AO da Fase 2) e "Blocked attempt to show a 'beforeunload' confirmation panel…", que o Chrome registra
+  quando a página é recarregada por script no meio da partida (a proteção contra Ctrl+W da Fase 1; com gesto do
+  usuário ele pergunta).
+
+Checklist da subfase (o aceite detalhado está em `docs/phases/phase-3.md`):
+- [x] Sala de testes andável: paredes, pote, tampa, espátula e boneco colidem; quinas sem tremer; beirada (em pé com o
+      eixo até 16 u fora da borda, sem afundar); pote aberto com o pulo agachado de fora.
+- [x] Degraus (≤ 18 u, em qualquer velocidade, inclusive agachado partindo parado), rampas (≤ ~45,6°), deslize em
+      rampa íngreme; teto barra pulo e levantar.
+- [x] Pulo com ápice de ~57 u; pulo agachado alcança 64 u, o em pé não, 72 u nenhum.
+- [x] Noclip liga e desliga sem prender o jogador (sai da parede pelo lado do chão); fora do set volta ao spawn.
+- [x] `r_colisao`, `cl_showpos`, `thirdperson` e `sv_*` funcionando; overlay com a linha de física; painéis de debug
+      sem se cobrir em janela larga, estreita e de celular.
+- [x] 113 testes passando, incluindo os 10 min simulados sem atravessar parede e o determinismo bit a bit.
+- [x] Sem erros do jogo no console; sem vazamento em 3 ciclos menu ↔ sala; arquivos abaixo de 600 linhas (o maior,
+      `collisionWorld.js`, com 580); números em `src/data/`.
+
+Git: o projeto tem repositório próprio; a branch `fase-3.1` foi criada a partir de `main` (commit `c8bf024`, Fases 1
+e 2). Nada da 3.1 foi commitado ainda — os arquivos estão na árvore de trabalho esperando o pedido de commit.
+
+### Subfase 3.2 — Movimento tático CS ✅ (2026-09-25)
+
+Plano executado: `docs/phases/phase-3.2-plan.md` (validado tarefa por tarefa numa cópia limpa antes da execução; os
+blocos de código são a versão final). Desenho em `docs/phases/phase-3.md` (seção 3.2); pesquisa em `docs/research/`
+(o movimento e a inaccuracy lidos no código do CS:GO de ~2017 e os dados do `items_game` final).
+
+O movimento agora é o do CS:GO: teto do tick pelo item na mão (mín(260, `sv_maxspeed`, item)), aceleração com a
+razão da arma, andar (×0,52, engata só abaixo de teto × 0,52 + 25, com a rampa final de 5 u/s), agachar com
+velocidade própria e penalidade de spam (−2 por mudança da tecla, trava abaixo de 1,5, 0,4 s entre agachares,
+recuperação 3/s e +6/s longe da âncora), `FL_DUCKING`, troca de cápsula no ar com ±9 u (duckbug e jumpbug), teto
+duro, stamina (pulo +0,08 × impulso, pouso +0,05 × queda, recupera 60/s; teto × (1 − s/100)², pulo × (1 − s/100)),
+bunny hop com teto de 286 u/s e passos por tempo, audíveis ou não. O pulo da 3.1 ficou (57 u). O item na mão tem
+estado próprio (`hands`) ao lado do `Loadout`: troca pelo comando do tick (1–5, roda e Q), troca automática no `give`
+e a luneta das 6 armas com mira (níveis, FOV relativo ao do jogador, 0,3 s entre cliques, sensibilidade
+`zoomSensitivity × fov/90`, velocidade com luneta, "sniper lenta"). A inaccuracy do `CWeaponCSBase` roda a cada tick
+(base, penalidade com recuperação pelo índice de recuo, pouso, movimento, ar com o ápice da Deagle; o disparo fica
+pronto para a Fase 4). O counter-strafe é medido (telemetria de 256 ticks → medidor → gráfico no `cl_showpos`). O andar
+silencioso segura no teclado e alterna no controle e no toque, configurável por dispositivo; o toque ganhou o botão
+Andar (layout versão 2, com migração dos layouts salvos).
+
+Decisões tomadas na implementação:
+- **Fatores do teto no estado** (`walkFactor`, `staminaFactor`, `duckFactor`): o `cl_showpos` mostra a conta exata.
+  Andar pode ficar "engatado" sem valer num tick (velocidade acima de teto × 0,52 + 25), como no CS:GO.
+- **Ao nascer, a mão saca o melhor item** (primária > pistola > faca > granadas > bomba), como no spawn do CS.
+- **Teto do bhop na velocidade 3D** com a meia gravidade do tick (−6,25 u/s), como no CS:GO: de 400 u/s no plano sai
+  a 285,97.
+- **Trinco do andar troca só com o aperto registrado pelo dispositivo**: segurar o botão durante uma troca de
+  contexto não liga nada sozinho. Os modos (`TOGGLE_MODE`) ficam em `src/data/actions.js` — a config em `src/data` não
+  depende de `src/input`.
+- **`sv_timebetweenducks`**: vale no primeiro tick com 0,4 s desde o agachar completo (26 ticks a 64 Hz).
+
+Ajustes achados nos testes: no túnel de 60 u da 3.1, o jogador preso agachado acelera como agachado do CS:GO (+0,8 u/s
+líquidos por tick partindo parado), então a saída do teste passou de 128 para 192 ticks; o medidor de counter-strafe
+recomeça do início quando a telemetria é zerada (antes pulava as amostras gravadas antes da chamada).
+
+Arquivos criados:
+- `src/data/inaccuracy.js` — inaccuracy das 24 armas (items_game final, com os modos alt) e as constantes do
+  `CWeaponCSBase`.
+- `src/player/hands.js` — item na mão: ordem dos itens, troca por slot/roda/Q, sincronização com o inventário, troca
+  automática, luneta (níveis, FOV, tempos, sensibilidade), modo alt, velocidade do item e sniper lenta.
+- `src/player/inaccuracy.js` — `updateAccuracy`, `landAccuracy`, `fireAccuracy`, `inaccuracyOf`, recuperação,
+  limiar de precisão.
+- `src/player/duck.js` — agachar do CS:GO (portão do spam, recuperação, transição, `CanUnduck`, troca de cápsula,
+  corte do teto, olho).
+- `src/player/footsteps.js` — relógio dos passos (19 ticks correndo, 25 na classe lenta, +100 ms agachado).
+- `src/player/telemetry.js` — anel de 256 ticks (velocidade, teto, velocidade da arma, limiar, inaccuracy, desejo,
+  velocidade, marcas).
+- `src/input/actionToggles.js` — trinco segurar/alternar por dispositivo.
+- `src/debug/strafeMeter.js` — medidor de counter-strafe ("contra" e "soltar"; última, melhor e média das 10).
+- `src/debug/speedGraph.js` — gráfico dos últimos 4 s do `cl_showpos`.
+- Testes: `hands.test.js` (8), `inaccuracy.test.js` (6), `tacticalMovement.test.js` (15), `footsteps.test.js` (5),
+  `strafeMeter.test.js` (5).
+- `docs/phases/phase-3.2-plan.md`; `docs/research/csgo-movement-notes.md`, `csgo-inaccuracy-notes.md` e
+  `csgo-weapon-accuracy.json`.
+
+Arquivos alterados:
+- `src/data/movement.js` — `sv_*` novas (stamina, bhop, `timebetweenducks`, `accelerate_use_weapon_speed`), `MOVE`,
+  `DUCK` completo, `STEPS`.
+- `src/data/surfaces.js` (`stepSlow`/`stepFast`), `src/data/weapons.js` (FOVs e tempos de zoom, `SCOPE`, `BOMB`),
+  `src/data/economy.js` (granadas a 245 u/s), `src/data/actions.js` (modos do trinco), `src/data/touchLayout.js`
+  (botão Andar, versão 2), `src/data/configSchema.js` (modos do andar por dispositivo, migração do layout).
+- `src/player/movement.js` (porte do `PlayerMove`/`FullWalkMove` do CS:GO), `src/player/moveCmd.js` (`cmd.select`),
+  `src/player/playerPawn.js` (tick na ordem do `RunCommand`, precisão, luneta com FOV interpolado, telemetria,
+  eventos), `src/player/loadout.js` (`giveBomb`, `grenadeTypes`), `src/player/movementVars.js` (sv_* de 0/1).
+- `src/core/events.js` — `EV.PLAYER_STEP`, `EV.PLAYER_WEAPON`, `EV.PLAYER_ZOOM`; pulo e pouso com `audible`/`heavy`;
+  `EV.LOADOUT` com `received`.
+- `src/input/inputManager.js` — avaliação por dispositivo, trincos, `resetToggles()`.
+- `src/ui/settingControls.js`, `src/ui/settingsScreen.js` (modo do andar nas abas Teclas, Controle e Toque),
+  `src/ui/sandboxHud.js` + `styles/hud.css` (etiqueta "na mão", "ANDANDO", dicas).
+- `src/debug/showPos.js` + `styles/debug.css` (linhas novas, gráfico e legenda), `src/debug/movementCommands.js`
+  (`cl_strafe_reset`), `src/debug/commands.js` (`give bomba`; `loadout` com o item na mão).
+- `src/modes/matchState.js` — inventário no pawn, medidor, sensibilidade da luneta, trincos, HUD.
+- Testes: `movementData` (6), `data` (9), `characterController` (16), `playerPawn` (10), `input` (10),
+  `movementFuzz` (2, agora com andar, spam de agachar, pulos com stamina e troca de item), `playerTestUtils`.
+
+Como testar:
+1. `npm test` → 166 testes passando (~3,3 s; os 10 min simulados levam ~1,8 s).
+2. `npm run dev` → **Sala de testes**. Teclado: WASD, Shift anda (segurar), Ctrl agacha, Espaço pula, 1–5 / roda / Q
+   trocam de item, botão direito é a luneta. Controle: L3 liga/desliga o andar, Y/△ troca, LT/L2 luneta. Toque: botão
+   Andar.
+3. Console: `give ak47` (troca sozinho para a primária), `give awp` + botão direito (40° e 10°), `give bomba`,
+   `give flash`, `loadout`; `cl_showpos 1` (teto com os fatores, stamina, agachar, precisão com as partes, passo,
+   pouso, placar do counter-strafe e o gráfico); com a AK, correr de lado e apertar o lado oposto marca "contra"
+   (~78 ms), soltar marca "soltar" (~203 ms); `cl_strafe_reset`; `sv_enablebunnyhopping 1`, `sv_autobunnyhopping 1`,
+   `sv_staminajumpcost 0`, `sv_timebetweenducks 0`, `sv_accelerate_use_weapon_speed 0` e `sv_reset`.
+4. Configurações → Teclas, Controle e Toque: "Andar silencioso" com Segurar / Alternar.
+
+Medições (Node e navegador, 64 tick):
+- Movimento: faca 0 → 250 em 35 ticks; AK 0 → 215 em 36; faca andando 0 → 130 em 40 (sem passar de 130); AK andando
+  0 → 111,8 em 26; faca agachada 0 → 85 em 100; AWP com zoom 0 → 100 em 53 e andando 0 → 52 em 22; faca a 250 + Shift
+  trava em 130 no 7º tick; soltando tudo para em 26 ticks; agachar 13 ticks, levantar 11; pulo 57 u, pulo + Ctrl 66 u;
+  stamina 24,16 no pulo, pouso plano a 285,51 u/s → 14,28 → teto × 0,735 no primeiro tick → zera em 16 ticks.
+- Passos: faca a cada 19 ticks, AK a cada 25; andando, agachado e AWP com zoom silenciosos; AUG com zoom audível.
+- Inaccuracy: os vetores da pesquisa com diferença < 10⁻⁶ (AK parada 0,00641, correndo 0,18147, andando a 111,8
+  0,058067, saída do pulo 0,24811, pouso 0,220252 → 0,00682 em 64 ticks; AWP com zoom 0,002; Deagle no ápice 0,3763).
+- Navegador (projeto real, entrada pelo `InputManager`): counter-strafe da AK "contra" 5 ticks (78 ms) × "soltar" 13
+  (203 ms); AK andando 111,8 u/s com "ANDANDO" e passo silencioso; luneta da AWP com zoom 0,36397 (tan 20°) e 0,087489
+  (tan 5°) e sensibilidade 0,444 e 0,111; troca por 1–5, roda e Q na ordem do CS.
+- Memória: sala com 25 geometrias / 37 texturas / 29 programas nas três entradas; menu com 2 / 34 / 19 nas três
+  saídas; ouvintes de `player:weapon`, `player:zoom` e `loadout:change`: 1 na partida, 0 no menu.
+- Console do navegador sem nenhuma mensagem nesta rodada. O painel de preview roda a poucos quadros por segundo (o
+  loop limita a 8 ticks por quadro), por isso as medidas no navegador esperam ticks; custo em µs/tick não foi medido.
+
+Checklist da subfase (o aceite detalhado está em `docs/phases/phase-3.md`):
+- [x] Velocidade de cada arma e item, andar, agachar e luneta nos números certos (`cl_showpos` e testes).
+- [x] Troca por 1–5, roda e Q; luneta funcional nas 6 armas com mira (FOV, sensibilidade, velocidade, precisão).
+- [x] Counter-strafe medido no `cl_showpos`: "contra" bem mais rápido que "soltar" (78 × 203 ms na AK).
+- [x] Bunny hop possível mas penalizado (teto de 286, stamina); spam de agachar visível (velocidade do agachar no
+      `cl_showpos`; a tecla trava abaixo de 1,5).
+- [x] Eventos de passo, pulo e pouso corretos (audível × silencioso, volume, superfície).
+- [x] Andar alternado no controle e no toque; segurar no teclado; configurável por dispositivo. No navegador, conferidos
+      o teclado em Alternar e o botão no layout de toque; controle e toque, pelos testes do trinco e da config (sem
+      controle físico nem celular nesta máquina).
+- [x] 166 testes passando (incluindo os 10 min simulados); sem erros do jogo no console; sem vazamento em 3 ciclos
+      menu ↔ sala; arquivos abaixo de 600 linhas (o maior da 3.2, `inputManager.js`, com 561); números em `src/data/`.
+
+Fica para as outras fases, como no desenho: o visual da luneta (anel de massinha, retícula, distorção, esconder a
+mira, desfazer o zoom no tiro e na recarga) e o tempo de sacar, tirar o silenciador e ligar a rajada, o freio por
+levar tiro (Fase 4); escada; pisar em outro jogador (Fases 5 e 9); plantar e desarmar forçando o agachar (Fase 8);
+dano de queda (3.4); o áudio dos passos (Fase 12) e a audição dos bots (Fase 7), que já recebem os eventos.
+
+Git: nada commitado. A 3.1 e a 3.2 estão juntas na árvore de trabalho da branch `fase-3.1`, esperando o pedido de
+commit.
+
+### Próxima: Subfase 3.3 — Pista de testes
+
+Plano em `docs/phases/phase-3.md` (seção 3.3): pesquisa no Pinterest antes do visual (moodboard item 11) e o mapa
+`pista` com o kit e os materiais do set — faixa de counter-strafe com grade de 1 m, escadas de 8/12/16/18/20/24 u,
+rampas de 15/30/44/46/60°, caixas de 57/64/72 u, poço e paredes em zigue-zague para wall-jump, vãos de slide, torre
+de queda com marcas de altura, faixa longa de bhop, vigas estreitas, paredes finas, túnel baixo e placas de massinha
+para as pegadas; colisão com o `ColliderBuilder`, luz própria e acesso pelo menu, lobby e console.

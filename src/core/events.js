@@ -121,5 +121,11 @@ export const EV = Object.freeze({
   ROSTER: 'roster:change', // {participants}
   MAP_LOADED: 'map:loaded', // {id}
   MAP_UNLOADED: 'map:unloaded', // {id}
-  LOADOUT: 'loadout:change', // {owner, loadout}
+  LOADOUT: 'loadout:change', // {owner, loadout, received?: {kind, id, slot}}
+  PLAYER_JUMP: 'player:jump', // {surface, speed, audible}
+  PLAYER_LAND: 'player:land', // {speed, surface, audible, heavy} — velocidade de queda no pouso (u/s)
+  PLAYER_DUCK: 'player:duck', // {ducked}
+  PLAYER_STEP: 'player:step', // {foot, x, y, z, surface, volume, speed, audible} — áudio e audição dos bots
+  PLAYER_WEAPON: 'player:weapon', // {item, previous, slot} — item novo na mão
+  PLAYER_ZOOM: 'player:zoom', // {level, fov} — nível da luneta (fov na referência de 90°; null sem zoom)
 });

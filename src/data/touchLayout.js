@@ -1,6 +1,7 @@
 // Layout padrão dos controles de toque (celular/tablet). Coordenadas normalizadas (0..1) da tela;
 // raio em fração do menor lado da tela. O editor de layout (Fase 10) grava a versão do jogador em
-// config `controls.touch.layout`; aqui ficam os padrões e as zonas.
+// config `controls.touch.layout`; aqui ficam os padrões e as zonas. Cada botão padrão novo entra em
+// TOUCH_BUTTONS_SINCE com a versão que o trouxe: layouts salvos antes dela o ganham ao carregar.
 
 export const TOUCH_ZONES = Object.freeze({
   // Joystick flutuante: nasce onde o dedo tocar dentro desta área.
@@ -18,6 +19,7 @@ export const DEFAULT_TOUCH_BUTTONS = Object.freeze([
   Object.freeze({ id: 'aim', action: 'aim', x: 0.94, y: 0.44, r: 0.055, opacity: 0.7 }),
   Object.freeze({ id: 'jump', action: 'jump', x: 0.93, y: 0.82, r: 0.065, opacity: 0.75 }),
   Object.freeze({ id: 'crouch', action: 'crouch', x: 0.79, y: 0.88, r: 0.055, opacity: 0.7 }),
+  Object.freeze({ id: 'walk', action: 'walk', x: 0.705, y: 0.9, r: 0.04, opacity: 0.65 }),
   Object.freeze({ id: 'reload', action: 'reload', x: 0.72, y: 0.72, r: 0.05, opacity: 0.7 }),
   Object.freeze({ id: 'use', action: 'use', x: 0.66, y: 0.55, r: 0.045, opacity: 0.65 }),
   Object.freeze({ id: 'nextWeapon', action: 'nextWeapon', x: 0.62, y: 0.9, r: 0.05, opacity: 0.65 }),
@@ -28,6 +30,12 @@ export const DEFAULT_TOUCH_BUTTONS = Object.freeze([
   Object.freeze({ id: 'pause', action: 'pause', x: 0.95, y: 0.07, r: 0.04, opacity: 0.6 }),
 ]);
 
+/** Versão do layout padrão (2: botão de andar silencioso, Fase 3.2). */
+export const TOUCH_LAYOUT_VERSION = 2;
+
+/** Botões padrão acrescentados em cada versão (ids de DEFAULT_TOUCH_BUTTONS). */
+export const TOUCH_BUTTONS_SINCE = Object.freeze({ 2: Object.freeze(['walk']) });
+
 export function defaultTouchLayout() {
-  return { version: 1, buttons: DEFAULT_TOUCH_BUTTONS.map((b) => ({ ...b })) };
+  return { version: TOUCH_LAYOUT_VERSION, buttons: DEFAULT_TOUCH_BUTTONS.map((b) => ({ ...b })) };
 }

@@ -1,12 +1,20 @@
-// Estado "partida". Na Fase 1 roda o modo "livre": câmera FPS livre no mapa escolhido.
-// Responsável por: montar/desmontar o mapa (sem vazar GPU), câmera, contexto de entrada, pointer lock,
-// pausa e o resumo que vai para a tela de resultado. Os modos de jogo (Fase 8) se penduram aqui.
+// Estado "partida". Até os modos de jogo (Fase 8) roda o modo "livre" no mapa escolhido: em mapa com colisão o jogador
+// anda com a cápsula (PlayerPawn, Fase 3) e o inventário local; sem colisão (vitrine) voa com a câmera livre.
+// Responsável por: montar/desmontar o mapa (sem vazar GPU), jogador e câmera, contexto de entrada, pointer lock,
+// pausa, volta ao spawn ao cair do set, sensibilidade da luneta, trincos do andar, ferramentas de debug da física e do
+// movimento (medidor de counter-strafe) e o resumo que vai para a tela de resultado.
 
 import { EV, Subscriptions } from '../core/events.js';
+import { SANDBOX } from '../data/sandbox.js';
 import { getMapDef } from '../maps/index.js';
 import { createFpsCamera } from '../render/camera.js';
 import { disposeObject3D } from '../render/dispose.js';
 import { FreeCamera } from '../player/freeCamera.js';
+import { PlayerPawn } from '../player/playerPawn.js';
+import { itemName, zoomLevels } from '../player/hands.js';
+import { PhysicsDebugView } from '../debug/physicsDebug.js';
+import { ShowPosPanel } from '../debug/showPos.js';
+import { StrafeMeter } from '../debug/strafeMeter.js';
 import { CONTEXT } from '../input/inputManager.js';
 import { createSandboxHud } from '../ui/sandboxHud.js';
 import { createPauseMenu } from '../ui/pauseMenu.js';
@@ -20,6 +28,9 @@ export class MatchState {
     this.map = null;
     this.camera = null;
     this.player = null;
+    this.physicsDebug = null;
+    this.showPos = null;
+    this.strafe = null; // medidor de counter-strafe (cl_showpos)
     this.hud = null;
     this.pause = null;
     this.paused = false;
@@ -48,9 +59,21 @@ export class MatchState {
 
     this.camera = createFpsCamera({ hfov: s.config.get('graphics.fov'), aspect: s.render.cssWidth / s.render.cssHeight });
     const sp = this.map.spawn;
-    this.player = new FreeCamera({
-      position: sp.position, yaw: sp.yaw, pitch: sp.pitch, bounds: this.map.bounds, speedScale: this.map.move?.speedScale ?? 1,
-    });
+    if (this.map.collision) {
+      this.player = new PlayerPawn({
+        world: this.map.collision, sv: s.sv, loadout: s.localLoadout, events: s.events,
+        position: sp.position, yaw: sp.yaw, pitch: sp.pitch,
+      });
+      this.physicsDebug = new PhysicsDebugView({ scene: this.map.scene, world: this.map.collision });
+      this.showPos = new ShowPosPanel(s.debugRoot);
+      this.strafe = new StrafeMeter(s.loop.stepDt);
+      this.#applyDebugView();
+      this.subs.add(s.config.watch('debug.', () => this.#applyDebugView()));
+    } else {
+      this.player = new FreeCamera({
+        position: sp.position, yaw: sp.yaw, pitch: sp.pitch, bounds: this.map.bounds, speedScale: this.map.move?.speedScale ?? 1,
+      });
+    }
     this.player.updateCamera(this.camera, 1);
     s.render.setView(this.map.scene, this.camera, { staticShadows: this.map.staticShadows ?? false });
     // Contexto do pós (jogo, vitrine...) e exposição da montagem de luz do mapa.
@@ -58,7 +81,7 @@ export class MatchState {
 
     if (!s.roster.humans.some((p) => p.local)) s.roster.addHuman({ name: 'Você', local: true });
 
-    this.hud = createSandboxHud(s, { title: def.label });
+    this.hud = createSandboxHud(s, { title: def.label, mode: this.map.collision ? 'andar' : 'voo' });
     this.pause = createPauseMenu(s, {
       onResume: () => this.resume(),
       onSettings: () => openSettings(s),
@@ -92,11 +115,21 @@ export class MatchState {
       this.devices.add(device);
       this.hud.setPromptVisible(device === 'kbm' && !s.input.pointerLocked && !this.paused);
     });
+    if (this.player instanceof PlayerPawn) {
+      // Arma recebida (give, loja): troca automática se for melhor que a da mão.
+      this.subs.on(s.events, EV.LOADOUT, ({ owner, received }) => {
+        if (owner === 'local') this.player?.onLoadout(received);
+      });
+      this.subs.on(s.events, EV.PLAYER_WEAPON, () => this.#syncHeld());
+      this.subs.on(s.events, EV.PLAYER_ZOOM, () => this.#syncHeld());
+      this.#syncHeld();
+    }
 
     this.devices = new Set([s.input.device]);
     this.startedAt = performance.now();
     this.pausedMs = 0;
     this.paused = false;
+    s.input.resetToggles();
     s.input.setContext(CONTEXT.GAME);
     s.events.emit(EV.MAP_LOADED, { id: this.map.id });
     if (s.input.device === 'kbm') {
@@ -104,6 +137,23 @@ export class MatchState {
       const ok = await s.input.requestPointerLock();
       this.hud.setPromptVisible(!ok);
     }
+  }
+
+  /** r_colisao, cl_showpos e terceira pessoa seguem as chaves de debug da config. */
+  #applyDebugView() {
+    const cfg = this.s.config;
+    this.physicsDebug?.setVisible(cfg.get('debug.collision'));
+    this.showPos?.setVisible(cfg.get('debug.showPos'));
+    if (this.player instanceof PlayerPawn) this.player.thirdPerson = cfg.get('debug.thirdPerson');
+  }
+
+  /** Etiqueta "na mão" do HUD de teste: item, velocidade no modo atual e nível da luneta. */
+  #syncHeld() {
+    const p = this.player;
+    if (!(p instanceof PlayerPawn)) return;
+    const levels = zoomLevels(p.hands.item);
+    const zoom = levels ? ` · luneta ${p.hands.zoom}/${levels}` : '';
+    this.hud.setHeld(`na mão: ${itemName(p.hands.item)} · ${p.held.speed} u/s${zoom}`);
   }
 
   async #lock() {
@@ -164,17 +214,38 @@ export class MatchState {
     s.input.setContext(CONTEXT.GAME);
   }
 
-  tick(dt) {
+  tick(dt, tickIndex) {
     if (this.paused || !this.player) return;
-    this.player.tick(dt, this.s.input, { noclip: this.s.cheats.noclip });
+    // O olhar acumulado no quadro entra antes do tick: o comando do tick usa o yaw mais recente.
+    this.player.applyLook(this.s.input.consumeLook());
+    this.player.tick(dt, this.s.input, { noclip: this.s.cheats.noclip, tick: tickIndex });
+    if (this.player instanceof PlayerPawn) {
+      this.strafe.updateFrom(this.player.telemetry);
+      // Luneta: a sensibilidade do olhar do próximo quadro segue o nível de zoom deste tick.
+      this.s.input.lookScale = this.player.lookScale(this.s.config.get('controls.zoomSensitivity'));
+    }
+    this.#checkFellOut();
     this.map.tick?.(dt);
+  }
+
+  /** Noclip desligado fora do set: o jogador cai sem chão. Bem abaixo do mapa, volta ao spawn. */
+  #checkFellOut() {
+    const p = this.player;
+    if (!(p instanceof PlayerPawn) || p.state.origin.y > this.map.bounds.min.y - SANDBOX.fallOutDepth) return;
+    const sp = this.map.spawn;
+    p.teleport(sp.position, sp.yaw, sp.pitch);
+    this.s.toasts.show('Caiu para fora do set: de volta ao spawn');
   }
 
   frame(alpha, dt) {
     if (!this.player) return;
     const look = this.s.input.consumeLook();
     if (!this.paused) this.player.applyLook(look);
-    this.player.updateCamera(this.camera, this.paused ? 1 : alpha);
+    const a = this.paused ? 1 : alpha;
+    this.player.updateCamera(this.camera, a);
+    this.physicsDebug?.update(this.player, a);
+    this.showPos?.update(this.player, this.strafe);
+    if (this.player instanceof PlayerPawn) this.hud.setWalking(!this.s.cheats.noclip && this.s.input.isDown('walk'));
     this.map.frame?.(dt, this.camera);
   }
 
@@ -196,17 +267,22 @@ export class MatchState {
     const s = this.s;
     s.input.exitPointerLock();
     s.input.setContext(CONTEXT.UI);
+    s.input.resetToggles();
+    s.input.lookScale = 1;
     this._popCursorNav?.();
     this._popCursorNav = null;
     this.cursorMode = false;
     this.subs?.dispose();
     this.pause?.dispose();
     this.hud?.dispose();
+    this.physicsDebug?.dispose();
+    this.showPos?.dispose();
     s.render.clearView();
     s.render.post?.configure({ context: 'jogo', exposure: 1 });
     if (this.map) {
       const id = this.map.id;
       this.map.dispose?.();
+      this.map.collision?.dispose();
       disposeObject3D(this.map.scene);
       // Materiais do set em cache eram deste mapa (a GPU já foi liberada acima): o próximo mapa cria os seus.
       s.set?.releaseMaterials();
@@ -214,6 +290,9 @@ export class MatchState {
     }
     this.map = null;
     this.player = null;
+    this.physicsDebug = null;
+    this.showPos = null;
+    this.strafe = null;
     this.camera = null;
     this.pause = null;
     this.hud = null;

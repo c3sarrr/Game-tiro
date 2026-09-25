@@ -35,6 +35,21 @@
 
 .hud-status { font: 800 0.8rem var(--font-mono); color: var(--clay-yellow); text-shadow: 0 1px 2px #000; }
 
+/* Item na mão: segunda tira de fita crepe, torta para o outro lado. */
+.hud-held { font: 700 0.8rem / 1.2 var(--font-mono); transform: rotate(0.8deg); }
+
+/* Andar silencioso ligado: aviso curto logo abaixo da mira. */
+.hud-walk {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 26px);
+  translate: -50% 0;
+  font: 800 0.72rem var(--font-mono);
+  letter-spacing: 0.14em;
+  color: var(--clay-yellow);
+  text-shadow: 0 1px 2px #000;
+}
+
 .hud-prompt {
   position: absolute;
   left: 50%;

@@ -4,12 +4,16 @@
 // - Olhar (mouse/analógico/arrasto/giroscópio) é aplicado por QUADRO (resposta imediata);
 //   ações e movimento são amostrados por TICK (64 Hz) com latches, prontos para virar comandos de rede.
 // - Eventos imediatos (EV.INPUT_ACTION) para UI: pausar, console, overlay, loja, chat...
+// - Cada ação é avaliada por dispositivo e juntada; as que podem alternar (andar silencioso) passam por um trinco por
+//   dispositivo, no modo escolhido para ele (src/input/actionToggles.js). O alternado sobrevive à pausa, é zerado pela
+//   partida ao entrar e sair (resetToggles) e trocar de dispositivo desliga o dos outros.
 
 import { EV } from '../core/events.js';
-import { ACTIONS, ACTION_IDS, ACTION_BY_ID } from '../data/actions.js';
+import { ACTIONS, ACTION_IDS, ACTION_BY_ID, TOGGLE_MODE } from '../data/actions.js';
 import { KeyboardMouse } from './keyboardMouse.js';
 import { GamepadInput, responseCurve } from './gamepad.js';
 import { TouchInput } from './touch.js';
+import { createToggleSet, keepToggleDevice, resetToggleSet, stepToggleSet } from './actionToggles.js';
 import { parseBinding, buildReverseMap } from './bindings.js';
 import { bindingLabel, padStyle } from './labels.js';
 
@@ -45,6 +49,22 @@ export class InputManager {
     this._lookOut = { yaw: 0, pitch: 0 };
     this._evalValue = 0;
     this._evalPressed = false;
+    // Estado de uma ação em cada dispositivo (reutilizado a cada avaliação).
+    this._dev = {
+      kbm: { value: 0, pressed: false },
+      gamepad: { value: 0, pressed: false },
+      touch: { value: 0, pressed: false },
+    };
+    // Ações que podem alternar: trincos por dispositivo e o modo de cada um (lido da config).
+    this._toggles = {};
+    this._toggleModes = {};
+    this._toggleKeys = new Set();
+    for (const a of ACTIONS) {
+      if (!a.toggle) continue;
+      this._toggles[a.id] = createToggleSet();
+      this._toggleModes[a.id] = { kbm: TOGGLE_MODE.HOLD, gamepad: TOGGLE_MODE.HOLD, touch: TOGGLE_MODE.HOLD };
+      for (const key of Object.values(a.toggle)) this._toggleKeys.add(key);
+    }
     this._bindings = null;
     this._parsed = new Map();
     this._reverse = new Map();
@@ -55,7 +75,9 @@ export class InputManager {
     this.#loadBindings();
     this.touch.setLayout(this.config.get('controls.touch.layout'));
     this.#applyPadSettings();
+    this.#loadToggleModes();
     this._offs.push(this.config.watch('controls.', (e) => {
+      if (this._toggleKeys.has(e.key)) this.#loadToggleModes();
       if (e.key === 'controls.bindings') this.#loadBindings();
       else if (e.key === 'controls.touch.layout') this.touch.setLayout(e.value);
       else if (e.key.startsWith('controls.pad.')) this.#applyPadSettings();
@@ -297,45 +319,79 @@ export class InputManager {
     return this.moveVec;
   }
 
-  /** Resultado em this._evalValue/_evalPressed (sem alocar: roda ~30 ações × 64 ticks/s). */
+  /** Desliga o alternado de todas as ações (a partida chama ao entrar e ao sair). */
+  resetToggles() {
+    for (const id in this._toggles) resetToggleSet(this._toggles[id]);
+  }
+
+  /**
+   * Resultado em this._evalValue/_evalPressed (sem alocar: roda ~30 ações × 64 ticks/s). Cada dispositivo é avaliado à
+   * parte; a ação vale o maior valor entre eles. Nas que podem alternar, cada dispositivo passa pelo próprio trinco e o
+   * aperto cru não vira aperto da ação (quem diz se ligou é o trinco).
+   */
   #evaluate(action) {
-    let value = 0;
-    let pressed = false;
-    const entry = this._bindings[action];
-    for (const b of entry.kbm) {
+    const dev = this._dev;
+    this.#evalKbm(action, dev.kbm);
+    this.#evalPad(action, dev.gamepad);
+    this.#evalTouch(action, dev.touch);
+    const toggles = this._toggles[action];
+    if (toggles) {
+      this._evalValue = stepToggleSet(toggles, dev, this._toggleModes[action]) ? 1 : 0;
+      this._evalPressed = false;
+      return;
+    }
+    this._evalValue = Math.max(dev.kbm.value, dev.gamepad.value, dev.touch.value);
+    this._evalPressed = dev.kbm.pressed || dev.gamepad.pressed || dev.touch.pressed;
+  }
+
+  #evalKbm(action, out) {
+    out.value = 0;
+    out.pressed = false;
+    for (const b of this._bindings[action].kbm) {
       const p = this._parsed.get(b);
       if (!p) continue;
       if (p.kind === 'wheel') {
         if (this.kbm.wheelCount(p.dir) > 0) {
-          value = 1;
-          pressed = true;
+          out.value = 1;
+          out.pressed = true;
         }
       } else if (this.kbm.isDown(b)) {
-        value = 1;
-        if (this.kbm.wasPressed(b)) pressed = true;
+        out.value = 1;
+        if (this.kbm.wasPressed(b)) out.pressed = true;
       }
     }
-    if (this.pad.connected) {
-      for (const b of entry.pad) {
-        const p = this._parsed.get(b);
-        if (!p) continue;
-        let v = 0;
-        if (p.kind === 'button') v = this.pad.button(p.index) >= (p.index === 6 || p.index === 7 ? this.pad.triggerThreshold : 0.5) ? this.pad.button(p.index) : 0;
-        else if (p.kind === 'axis') v = this.#padAxisValue(p.index, p.sign);
-        if (v > value) value = v;
-        if (this.pad.wasPressed(b)) pressed = true;
+  }
+
+  #evalPad(action, out) {
+    out.value = 0;
+    out.pressed = false;
+    if (!this.pad.connected) return;
+    for (const b of this._bindings[action].pad) {
+      const p = this._parsed.get(b);
+      if (!p) continue;
+      let v = 0;
+      if (p.kind === 'button') {
+        const threshold = p.index === 6 || p.index === 7 ? this.pad.triggerThreshold : 0.5;
+        v = this.pad.button(p.index) >= threshold ? this.pad.button(p.index) : 0;
+      } else if (p.kind === 'axis') {
+        v = this.#padAxisValue(p.index, p.sign);
       }
+      if (v > out.value) out.value = v;
+      if (this.pad.wasPressed(b)) out.pressed = true;
     }
+  }
+
+  #evalTouch(action, out) {
+    out.value = 0;
+    out.pressed = false;
     if (this.touch.isHeld(action)) {
-      value = 1;
-      if (this.touch.wasPressed(action)) pressed = true;
+      out.value = 1;
+      if (this.touch.wasPressed(action)) out.pressed = true;
     }
     if (action === 'fire' && this.device === 'touch' && this.config.get('controls.touch.autoFire')) {
       // Tiro automático no toque: a jogabilidade liga `autoFireTarget` quando a mira está sobre um inimigo.
-      if (this.autoFireTarget) value = 1;
+      if (this.autoFireTarget) out.value = 1;
     }
-    this._evalValue = value;
-    this._evalPressed = pressed;
   }
 
   /** Meia-direção de eixo do controle com zona morta radial do analógico correspondente. */
@@ -394,6 +450,7 @@ export class InputManager {
     if (this.device === device) return;
     const previous = this.device;
     this.device = device;
+    for (const id in this._toggles) keepToggleDevice(this._toggles[id], device);
     this.events.emit(EV.INPUT_DEVICE, { device, previous });
   }
 
@@ -410,6 +467,15 @@ export class InputManager {
 
   #applyPadSettings() {
     this.pad.triggerThreshold = this.config.get('controls.pad.triggerThreshold');
+  }
+
+  /** Modo (segurar/alternar) de cada dispositivo nas ações que podem alternar. */
+  #loadToggleModes() {
+    for (const a of ACTIONS) {
+      if (!a.toggle) continue;
+      const modes = this._toggleModes[a.id];
+      for (const device in a.toggle) modes[device] = this.config.get(a.toggle[device]);
+    }
   }
 
   get bindings() {

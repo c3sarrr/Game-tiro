@@ -6,6 +6,7 @@ import { h } from '../ui/dom.js';
 import { clock } from '../core/time.js';
 import { ACTION_IDS } from '../data/actions.js';
 import { PRESET_LABELS } from '../data/qualityPresets.js';
+import { MOVETYPE } from '../player/movement.js';
 
 const MODES = ['off', 'compacto', 'completo'];
 const GRAPH_W = 180;
@@ -14,6 +15,16 @@ const GRAPH_H = 46;
 const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? 'n/d' : v.toFixed(d));
 const mb = (bytes) => `${(bytes / 1048576).toFixed(0)} MB`;
 const kfmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
+
+/** Linha da física do jogador (Fase 3): custo médio por tick e as consultas do último tick. */
+function physicsLine(player) {
+  if (!player) return 'física: — (fora da partida)';
+  const p = player.physicsStats;
+  if (!p) return 'física: câmera livre (mapa sem colisão)';
+  const s = player.state;
+  const where = s.moveType === MOVETYPE.NOCLIP ? 'noclip' : s.onGround ? 'chão' : 'ar';
+  return `física: ${fmt(p.us, 0)} µs/tick · varreduras ${p.sweeps} · sobreposições ${p.overlaps} · triângulos ${p.triangles} · ${where}`;
+}
 
 export class DebugOverlay {
   constructor(services) {
@@ -79,6 +90,7 @@ export class DebugOverlay {
       `entrada: ${input.device}${input.pointerLocked ? ' (mouse capturado)' : ''} · contexto ${input.context} · controle ${pad} · toque ${input.touch.available ? 'sim' : 'não'}`,
       `movimento (${fmt(input.move.x, 2)}, ${fmt(input.move.y, 2)}) · ações: ${down.length ? down.join(', ') : '—'}`,
       `estado: ${states.name ?? '—'} · participantes ${roster.size}/${roster.max} · cheats ${[cheats.god && 'god', cheats.noclip && 'noclip'].filter(Boolean).join(', ') || '—'}`,
+      physicsLine(states.name === 'match' ? states.current?.player : null),
     ];
     return lines.join('\n');
   }

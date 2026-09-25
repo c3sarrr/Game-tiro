@@ -3,15 +3,18 @@
 
 import * as THREE from 'three';
 import { EV } from '../core/events.js';
-import { WEAPONS, resolveWeaponId } from '../data/weapons.js';
+import { BOMB, BOMB_ALIASES, WEAPONS, resolveWeaponId } from '../data/weapons.js';
 import { UTILITIES, resolveUtilityId } from '../data/economy.js';
 import { ACTION_IDS } from '../data/actions.js';
 import { PRESET_IDS } from '../data/qualityPresets.js';
 import { BOT_LEVEL_MIN, BOT_LEVEL_MAX, getBotLevel } from '../data/botLevels.js';
 import { listMaps, getMapDef } from '../maps/index.js';
 import { parseBinding } from '../input/bindings.js';
+import { itemName } from '../player/hands.js';
 import { registerPostCommands } from './postCommands.js';
 import { registerShowcaseCommands } from './showcaseCommands.js';
+import { registerMovementCommands } from './movementCommands.js';
+import { onOff } from './consoleArgs.js';
 
 const DEG = Math.PI / 180;
 
@@ -34,13 +37,6 @@ export function parseKeyName(name) {
   if (/^f([1-9]|1[0-2])$/.test(k)) return `key:F${k.slice(1)}`;
   return null;
 }
-
-const onOff = (arg, current) => {
-  if (arg === undefined) return !current;
-  if (['1', 'on', 'sim', 'true', 'ligado'].includes(String(arg).toLowerCase())) return true;
-  if (['0', 'off', 'nao', 'não', 'false', 'desligado'].includes(String(arg).toLowerCase())) return false;
-  throw new Error(`esperava 0/1, recebi "${arg}"`);
-};
 
 export function registerCommands(con, s) {
   const reg = (def) => con.register(def);
@@ -86,30 +82,45 @@ export function registerCommands(con, s) {
   });
 
   reg({
-    name: 'give', usage: '<arma|item>', help: 'dá uma arma (ak47, awp, deagle...) ou item (he, flash, kevlarHelmet...)',
-    complete: () => [...Object.keys(WEAPONS), ...Object.keys(UTILITIES)],
+    name: 'give', usage: '<arma|item|bomba>',
+    help: 'dá uma arma (ak47, awp, deagle...), item (he, flash, kevlarHelmet...) ou a bomba',
+    complete: () => [...Object.keys(WEAPONS), ...Object.keys(UTILITIES), 'bomba'],
     run: ([name]) => {
       if (!name) throw new Error('qual arma? ex.: give ak47');
       const loadout = s.localLoadout;
       const wid = resolveWeaponId(name);
       const uid = wid ? null : resolveUtilityId(name);
+      const bomb = !wid && !uid && BOMB_ALIASES.includes(String(name).toLowerCase());
       let res;
       let label;
+      let received;
       if (wid) {
         res = loadout.give(wid, { ignoreTeam: true });
         label = WEAPONS[wid].name;
+        received = { kind: 'weapon', id: wid, slot: res.slot };
       } else if (uid) {
         res = loadout.giveUtility(uid);
         label = UTILITIES[uid].name;
+        received = { kind: 'utility', id: uid, slot: res.slot };
+      } else if (bomb) {
+        res = loadout.giveBomb({ ignoreTeam: true });
+        label = BOMB.name;
+        received = { kind: 'bomb', id: BOMB.id, slot: 'c4' };
       } else {
         throw new Error(`não conheço "${name}"`);
       }
       if (!res.ok) throw new Error(res.reason);
-      s.events.emit(EV.LOADOUT, { owner: 'local', loadout: loadout.toJSON() });
+      s.events.emit(EV.LOADOUT, { owner: 'local', loadout: loadout.toJSON(), received });
       return `recebeu ${label}${res.dropped ? ` (largou ${WEAPONS[res.dropped].name})` : ''}\n${loadout.describe()}`;
     },
   });
-  reg({ name: 'loadout', help: 'mostra o inventário do jogador local', run: () => s.localLoadout.describe() });
+  reg({
+    name: 'loadout', help: 'mostra o inventário do jogador local e o item na mão',
+    run: () => {
+      const hands = matchState()?.player?.hands;
+      return `${s.localLoadout.describe()}${hands ? `\nna mão: ${itemName(hands.item)}` : ''}`;
+    },
+  });
 
   reg({
     name: 'bot_add', usage: '[quantidade=1] [nível 1-10]', help: 'adiciona bots à partida (máx. 10 participantes)',
@@ -348,4 +359,6 @@ export function registerCommands(con, s) {
   registerPostCommands(con, s);
   // Vitrine e aceite da Fase 2: varredura de presets, luzes da montagem, massinha, diagnóstico "massa preta".
   registerShowcaseCommands(con, s, { goState, matchState });
+  // Movimento e colisão (Fase 3): variáveis sv_*, colisão visível, cl_showpos e câmera em terceira pessoa.
+  registerMovementCommands(con, s);
 }

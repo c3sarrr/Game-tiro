@@ -1,6 +1,12 @@
 // Ações de jogo (o que o jogador quer fazer), independentes do dispositivo.
 // Cada ação é ligada a teclas/botões em src/data/bindings.js e pode ser remapeada nas configurações.
 // `analog`: ação que também tem intensidade 0..1 (gatilhos, eixos). `ui`: dispara mesmo fora da partida.
+// `toggle`: a ação pode alternar (cada aperto liga/desliga) em vez de valer só segurando; o modo de cada dispositivo
+// vem da chave de config indicada (um dos TOGGLE_MODES; o trinco fica em src/input/actionToggles.js).
+
+/** Modos das ações que podem alternar: segurar (vale com o botão apertado) ou alternar (cada aperto troca). */
+export const TOGGLE_MODE = Object.freeze({ HOLD: 'segurar', TOGGLE: 'alternar' });
+export const TOGGLE_MODES = Object.freeze([TOGGLE_MODE.HOLD, TOGGLE_MODE.TOGGLE]);
 
 export const ACTION_GROUPS = Object.freeze([
   { id: 'movimento', label: 'Movimento' },
@@ -17,7 +23,10 @@ export const ACTIONS = Object.freeze([
   { id: 'moveRight', group: 'movimento', label: 'Direita', analog: true },
   { id: 'jump', group: 'movimento', label: 'Pular / wall-jump' },
   { id: 'crouch', group: 'movimento', label: 'Agachar / slide (correndo)' },
-  { id: 'walk', group: 'movimento', label: 'Andar silencioso' },
+  {
+    id: 'walk', group: 'movimento', label: 'Andar silencioso',
+    toggle: { kbm: 'controls.walkMode', gamepad: 'controls.pad.walkMode', touch: 'controls.touch.walkMode' },
+  },
 
   { id: 'fire', group: 'combate', label: 'Atirar / golpe leve', analog: true },
   { id: 'aim', group: 'combate', label: 'Mirar / luneta / bloquear (faca)', analog: true },

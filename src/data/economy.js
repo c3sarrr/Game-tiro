@@ -19,17 +19,19 @@ export const GRENADE_LIMITS = Object.freeze({
   perType: Object.freeze({ he: 1, flash: 2, smoke: 1, molotov: 1, incendiary: 1, decoy: 1 }),
 });
 
-/** Utilitários da loja (equipamento e granadas). `team`: null = ambos. */
+/** Utilitários da loja (equipamento e granadas). `team`: null = ambos. `moveSpeed`: com a granada na mão. */
 export const UTILITIES = Object.freeze({
   kevlar: Object.freeze({ id: 'kevlar', name: 'Colete', price: 650, kind: 'equipment', team: null }),
   kevlarHelmet: Object.freeze({ id: 'kevlarHelmet', name: 'Colete + Capacete', price: 1000, kind: 'equipment', team: null }),
   defuseKit: Object.freeze({ id: 'defuseKit', name: 'Kit de desarme', price: 400, kind: 'equipment', team: 'ct' }),
-  he: Object.freeze({ id: 'he', name: 'Granada HE', price: 300, kind: 'grenade', team: null }),
-  flash: Object.freeze({ id: 'flash', name: 'Flash', price: 200, kind: 'grenade', team: null }),
-  smoke: Object.freeze({ id: 'smoke', name: 'Smoke', price: 300, kind: 'grenade', team: null }),
-  molotov: Object.freeze({ id: 'molotov', name: 'Molotov', price: 400, kind: 'grenade', team: 'tr' }),
-  incendiary: Object.freeze({ id: 'incendiary', name: 'Incendiária', price: 600, kind: 'grenade', team: 'ct' }),
-  decoy: Object.freeze({ id: 'decoy', name: 'Decoy', price: 50, kind: 'grenade', team: null }),
+  he: Object.freeze({ id: 'he', name: 'Granada HE', price: 300, kind: 'grenade', team: null, moveSpeed: 245 }),
+  flash: Object.freeze({ id: 'flash', name: 'Flash', price: 200, kind: 'grenade', team: null, moveSpeed: 245 }),
+  smoke: Object.freeze({ id: 'smoke', name: 'Smoke', price: 300, kind: 'grenade', team: null, moveSpeed: 245 }),
+  molotov: Object.freeze({ id: 'molotov', name: 'Molotov', price: 400, kind: 'grenade', team: 'tr', moveSpeed: 245 }),
+  incendiary: Object.freeze({
+    id: 'incendiary', name: 'Incendiária', price: 600, kind: 'grenade', team: 'ct', moveSpeed: 245,
+  }),
+  decoy: Object.freeze({ id: 'decoy', name: 'Decoy', price: 50, kind: 'grenade', team: null, moveSpeed: 245 }),
 });
 
 /** Apelidos aceitos no console e em comandos de texto (`give colete`, `give hegrenade`, `give kit`...). */

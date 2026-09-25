@@ -1,8 +1,9 @@
 // Inventário do jogador (regras do CS): 1 primária, 1 pistola, faca, até 4 granadas (máx. 2 flashes, 1 de cada
 // outra), colete/capacete, kit de desarme (CT) e a bomba (TR). A loja (Fase 8), o `give` do console e o
-// Gun Game usam estas mesmas regras. Munição e estado de cada arma ficam no sistema de armas (Fase 4).
+// Gun Game usam estas mesmas regras. O item na mão fica em src/player/hands.js (Fase 3.2); munição e estado de cada
+// arma ficam no sistema de armas (Fase 4).
 
-import { WEAPONS } from '../data/weapons.js';
+import { BOMB, WEAPONS } from '../data/weapons.js';
 import { UTILITIES, GRENADE_LIMITS } from '../data/economy.js';
 
 export class Loadout {
@@ -73,6 +74,19 @@ export class Loadout {
     }
   }
 
+  /** A bomba (C4) do TR: uma só. `ignoreTeam` para cheats. */
+  giveBomb({ ignoreTeam = false } = {}) {
+    if (!ignoreTeam && this.team && this.team !== BOMB.team) return { ok: false, reason: 'a bomba é do TR' };
+    if (this.bomb) return { ok: false, reason: 'já está com a bomba' };
+    this.bomb = true;
+    return { ok: true, slot: 'c4' };
+  }
+
+  /** Tipos de granada na ordem em que entraram (a tecla 4 e a roda de troca seguem esta ordem). */
+  grenadeTypes() {
+    return [...new Set(this.grenades)];
+  }
+
   removeGrenade(utilId) {
     const i = this.grenades.indexOf(utilId);
     if (i >= 0) this.grenades.splice(i, 1);
@@ -119,6 +133,8 @@ export class Loadout {
   describe() {
     const name = (id) => (id ? WEAPONS[id]?.name ?? id : '—');
     const nades = this.grenades.map((g) => UTILITIES[g]?.name ?? g).join(', ') || '—';
-    return `primária: ${name(this.primary)} · pistola: ${name(this.secondary)} · faca: ${name(this.melee)} · granadas: ${nades} · colete: ${this.armor}${this.helmet ? ' + capacete' : ''}`;
+    return `primária: ${name(this.primary)} · pistola: ${name(this.secondary)} · faca: ${name(this.melee)}` +
+      ` · granadas: ${nades} · colete: ${this.armor}${this.helmet ? ' + capacete' : ''}` +
+      `${this.bomb ? ' · bomba' : ''}`;
   }
 }

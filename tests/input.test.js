@@ -1,12 +1,19 @@
-// Testes da camada de entrada (partes puras): bindings, conflitos, rótulos, controle.
+// Testes da camada de entrada (partes puras): bindings, conflitos, rótulos, controle; na Fase 3.2, o trinco
+// segurar/alternar do andar por dispositivo, os modos na config e a migração do layout de toque.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseBinding, assignBinding, clearBinding, findConflicts, buildReverseMap } from '../src/input/bindings.js';
 import { bindingLabel, keyLabel, padStyle } from '../src/input/labels.js';
 import { detectPadType, radialDeadzone, responseCurve } from '../src/input/gamepad.js';
 import { defaultBindings } from '../src/data/bindings.js';
-import { validateBindings } from '../src/data/configSchema.js';
-import { ACTION_IDS } from '../src/data/actions.js';
+import { CONFIG_SCHEMA, validateBindings, validateTouchLayout } from '../src/data/configSchema.js';
+import { ACTION_BY_ID, ACTION_IDS, TOGGLE_MODE, TOGGLE_MODES } from '../src/data/actions.js';
+import {
+  DEFAULT_TOUCH_BUTTONS, TOUCH_BUTTONS_SINCE, TOUCH_LAYOUT_VERSION, defaultTouchLayout,
+} from '../src/data/touchLayout.js';
+import {
+  TOGGLE_DEVICES, createToggle, createToggleSet, keepToggleDevice, resetToggleSet, stepToggle, stepToggleSet,
+} from '../src/input/actionToggles.js';
 
 test('parseBinding: todos os formatos', () => {
   assert.deepEqual(parseBinding('key:KeyW'), { device: 'kbm', kind: 'key', code: 'KeyW' });
@@ -102,5 +109,88 @@ test('controle: tipo pelo id, zona morta radial e curvas de resposta', () => {
       prev = v;
     }
     assert.ok(Math.abs(responseCurve(1, curve, 2.2) - 1) < 1e-9);
+  }
+});
+
+test('trinco do andar: segurar vale com o botão; alternar troca a cada aperto (o latch, não o botão parado)', () => {
+  const hold = createToggle();
+  assert.equal(stepToggle(hold, true, true, TOGGLE_MODE.HOLD), true);
+  assert.equal(stepToggle(hold, true, false, TOGGLE_MODE.HOLD), true);
+  assert.equal(stepToggle(hold, false, false, TOGGLE_MODE.HOLD), false);
+  const t = createToggle();
+  const seq = [[true, true], [true, false], [false, false], [true, true], [false, false], [true, false]];
+  assert.deepEqual(seq.map(([down, pressed]) => stepToggle(t, down, pressed, TOGGLE_MODE.TOGGLE)),
+    [true, true, true, false, false, false], 'segurar parado não troca; o 2º aperto desliga');
+  assert.equal(stepToggle(t, true, true, TOGGLE_MODE.TOGGLE), true, 'toque mais curto que um tick também liga');
+});
+
+test('trinco por dispositivo: cada um no seu modo, a ação vale se algum ligar; trocar de dispositivo e zerar', () => {
+  const set = createToggleSet();
+  const modes = { kbm: TOGGLE_MODE.HOLD, gamepad: TOGGLE_MODE.TOGGLE, touch: TOGGLE_MODE.TOGGLE };
+  const input = (kbm = [0, false], gamepad = [0, false], touch = [0, false]) => {
+    const one = ([value, pressed]) => ({ value, pressed });
+    return { kbm: one(kbm), gamepad: one(gamepad), touch: one(touch) };
+  };
+  assert.equal(stepToggleSet(set, input(undefined, [1, true]), modes), true, 'L3 liga');
+  assert.equal(stepToggleSet(set, input(), modes), true, 'e fica ligado solto');
+  assert.equal(stepToggleSet(set, input([1, true]), modes), true, 'Shift segurado também vale');
+  assert.equal(stepToggleSet(set, input([1, false], [1, true]), modes), true, 'L3 desliga, mas o Shift segue apertado');
+  assert.equal(stepToggleSet(set, input(), modes), false);
+  stepToggleSet(set, input(undefined, undefined, [1, true]), modes);
+  assert.equal(set.touch.on, true);
+  keepToggleDevice(set, 'kbm');
+  assert.equal(set.touch.on, false, 'trocou para o teclado: o alternado do toque desliga');
+  stepToggleSet(set, input(undefined, [1, true]), modes);
+  keepToggleDevice(set, 'gamepad');
+  assert.equal(set.gamepad.on, true, 'o do dispositivo novo fica');
+  resetToggleSet(set);
+  assert.ok(TOGGLE_DEVICES.every((d) => !set[d].on));
+});
+
+test('config: modo do andar por dispositivo (teclado segura; controle e toque alternam)', () => {
+  const walk = ACTION_BY_ID.walk.toggle;
+  assert.deepEqual(Object.keys(walk).sort(), [...TOGGLE_DEVICES].sort());
+  const expected = { kbm: TOGGLE_MODE.HOLD, gamepad: TOGGLE_MODE.TOGGLE, touch: TOGGLE_MODE.TOGGLE };
+  for (const [device, key] of Object.entries(walk)) {
+    const spec = CONFIG_SCHEMA[key];
+    assert.ok(spec, key);
+    assert.equal(spec.type, 'enum');
+    assert.deepEqual([...spec.options], [...TOGGLE_MODES]);
+    assert.equal(spec.default, expected[device], key);
+  }
+  assert.deepEqual(ACTION_IDS.filter((id) => ACTION_BY_ID[id].toggle), ['walk'], 'só o andar alterna por enquanto');
+});
+
+test('layout de toque v2: botão Andar; layouts v1 ganham só o que falta; as áreas de toque não se sobrepõem', () => {
+  assert.equal(TOUCH_LAYOUT_VERSION, 2);
+  assert.equal(defaultTouchLayout().version, 2);
+  const walk = DEFAULT_TOUCH_BUTTONS.find((b) => b.id === 'walk');
+  assert.equal(walk.action, 'walk');
+  for (const ids of Object.values(TOUCH_BUTTONS_SINCE)) {
+    for (const id of ids) assert.ok(DEFAULT_TOUCH_BUTTONS.some((b) => b.id === id), id);
+  }
+  // Layout salvo na v1, com o tiro movido pelo jogador: ganha o Andar e o tiro continua onde ele pôs.
+  const v1 = { version: 1, buttons: [{ id: 'fire', action: 'fire', x: 0.5, y: 0.5, r: 0.1, opacity: 1 }] };
+  const migrated = validateTouchLayout(v1);
+  assert.equal(migrated.version, 2);
+  assert.deepEqual(migrated.buttons.map((b) => b.id), ['fire', 'walk']);
+  assert.deepEqual(migrated.buttons[0], v1.buttons[0]);
+  assert.deepEqual(migrated.buttons[1], { ...walk });
+  const noVersion = validateTouchLayout({ buttons: [] });
+  assert.deepEqual(noVersion.buttons.map((b) => b.id), ['walk'], 'sem versão conta como v1');
+  const already = validateTouchLayout({ version: 1, buttons: [{ ...walk, x: 0.2 }] });
+  assert.equal(already.buttons.length, 1, 'já tinha o botão: não duplica');
+  assert.equal(already.buttons[0].x, 0.2);
+  assert.deepEqual(validateTouchLayout({ version: 2, buttons: [] }).buttons, [], 'v2 sem o botão: o jogador tirou');
+  // Área de toque = raio × 1,15 (tolerância do TouchInput.hitButton), em fração do menor lado da tela.
+  for (const [w, h] of [[1920, 1080], [2400, 1080], [1024, 768]]) {
+    const min = Math.min(w, h);
+    const B = DEFAULT_TOUCH_BUTTONS;
+    for (let i = 0; i < B.length; i++) {
+      for (let j = i + 1; j < B.length; j++) {
+        const d = Math.hypot((B[i].x - B[j].x) * w, (B[i].y - B[j].y) * h);
+        assert.ok(d >= (B[i].r + B[j].r) * min * 1.15, `${B[i].id} × ${B[j].id} em ${w}×${h}`);
+      }
+    }
   }
 });

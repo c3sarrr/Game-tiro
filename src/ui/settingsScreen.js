@@ -38,9 +38,12 @@ const MOUSE_KEYS = ['controls.mouseSensitivity', 'controls.zoomSensitivity', 'co
 const PAD_KEYS = [
   'controls.pad.lookSpeed', 'controls.pad.lookSpeedY', 'controls.pad.deadzoneLeft', 'controls.pad.deadzoneRight',
   'controls.pad.curve', 'controls.pad.curveExponent', 'controls.pad.invertY', 'controls.pad.triggerThreshold',
-  'controls.pad.vibration', 'controls.pad.icons',
+  'controls.pad.walkMode', 'controls.pad.vibration', 'controls.pad.icons',
 ];
-const TOUCH_KEYS = ['controls.touch.lookSensitivity', 'controls.touch.autoFire', 'controls.touch.gyroSensitivity', 'debug.touchGuides'];
+// Toque: as opções antes e depois do giroscópio (que tem linha própria, com o pedido de permissão).
+const TOUCH_KEYS = ['controls.touch.lookSensitivity', 'controls.touch.autoFire', 'controls.touch.walkMode'];
+const TOUCH_AFTER_GYRO_KEYS = ['controls.touch.gyroSensitivity', 'debug.touchGuides'];
+const WALK_HINT = 'alternar: cada aperto liga ou desliga';
 
 export function openSettings(services, { tab = 'graficos', onClose = null } = {}) {
   const { config, quality, input, rebinder, events, toasts, focusNav, render } = services;
@@ -132,7 +135,9 @@ export function openSettings(services, { tab = 'graficos', onClose = null } = {}
         if (!input.rumble(0.8, 0.4, 350)) toasts.show('Vibração indisponível neste controle/navegador', { kind: 'warn' });
       },
     }, 'Testar vibração');
-    return [section('Controle', status, ...PAD_KEYS.map((k) => track(settingRow(config, k))), test)];
+    return [section('Controle', status, ...PAD_KEYS.map((k) => track(settingRow(config, k, {
+      hint: k === 'controls.pad.walkMode' ? WALK_HINT : null,
+    }))), test)];
   }
 
   function toque() {
@@ -150,12 +155,16 @@ export function openSettings(services, { tab = 'graficos', onClose = null } = {}
     const info = h('p.xs-info', null, input.touch.available
       ? 'Toque detectado neste aparelho. O editor de posição dos botões fica na Fase 10 (menus).'
       : 'Nenhum toque detectado ainda. Os controles de toque ligam sozinhos ao tocar na tela.');
-    return [section('Toque', info, ...TOUCH_KEYS.slice(0, 2).map((k) => track(settingRow(config, k))), gyro,
-      ...TOUCH_KEYS.slice(2).map((k) => track(settingRow(config, k))))];
+    return [section('Toque', info, ...TOUCH_KEYS.map((k) => track(settingRow(config, k, {
+      hint: k === 'controls.touch.walkMode' ? WALK_HINT : null,
+    }))), gyro, ...TOUCH_AFTER_GYRO_KEYS.map((k) => track(settingRow(config, k))))];
   }
 
   function teclas() {
-    return [track(bindingsPanel({ input, rebinder, events, toasts }))];
+    return [
+      section('Teclado', track(settingRow(config, 'controls.walkMode', { hint: WALK_HINT }))),
+      track(bindingsPanel({ input, rebinder, events, toasts })),
+    ];
   }
 
   const BUILDERS = { graficos, mouse, controle, toque, teclas };

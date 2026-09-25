@@ -1,13 +1,22 @@
-/* Ferramentas de desenvolvimento: overlay de desempenho (F3), console (` / F1) e guias de toque. */
+/* Ferramentas de desenvolvimento: overlay de desempenho (F3), console (` / F1), cl_showpos e guias de toque. */
+
+/* Os painéis fixos (overlay à esquerda, cl_showpos à direita) ficam em fluxo numa linha que quebra: em tela estreita
+   o cl_showpos desce para baixo do overlay em vez de cobri-lo. O console é absoluto e fica fora desse fluxo. */
+#debug {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 4px 8px;
+  padding: calc(8px + var(--safe-t)) calc(8px + var(--safe-r)) 0 calc(8px + var(--safe-l));
+}
 
 .dbg-overlay {
-  position: absolute;
-  top: calc(8px + var(--safe-t));
-  left: calc(8px + var(--safe-l));
+  position: relative;
   z-index: 60;
   display: grid;
   gap: 4px;
-  max-width: min(760px, 96vw);
+  max-width: 100%;
   pointer-events: none !important;
 }
 
@@ -107,3 +116,50 @@
   height: 100%;
   pointer-events: none;
 }
+
+/* cl_showpos (Fase 3): jogador, item na mão, teto, precisão, passos e counter-strafe no canto superior direito, com o
+   gráfico dos últimos 4 s embaixo. Largura fixa na da linha mais longa (76 caracteres), para o painel não pular de
+   linha quando o texto muda; em tela menor que isso as linhas quebram e o gráfico encolhe junto. */
+.dbg-showpos {
+  position: relative;
+  z-index: 60;
+  width: min(100%, calc(76ch + 18px));
+  margin: 0 0 0 auto;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: rgb(42 35 32 / 0.78);
+  color: var(--paper);
+  font: 600 11.5px/1.45 var(--font-mono);
+  text-shadow: 0 1px 0 #000;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none !important;
+}
+
+.dbg-showpos-text { margin: 0; font: inherit; white-space: pre-wrap; }
+
+.dbg-showpos-graph {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-top: 5px;
+  border-radius: 3px;
+  background: rgb(21 16 14 / 0.55);
+}
+
+/* Legenda do gráfico: um traço na cor de cada série (o limiar tracejado, como no gráfico). */
+.dbg-showpos-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; font-size: 10.5px; }
+.dbg-showpos-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  margin-right: 5px;
+  border-top: 2px solid currentColor;
+  vertical-align: middle;
+}
+.dbg-showpos-legend .is-speed { color: var(--clay-yellow); }
+.dbg-showpos-legend .is-cap { color: rgb(246 240 228 / 0.75); }
+.dbg-showpos-legend .is-threshold { color: var(--ct-teal); }
+.dbg-showpos-legend .is-threshold::before { border-top-style: dashed; }
+.dbg-showpos-legend .is-inaccuracy { color: var(--alert); }
+.dbg-showpos-legend .is-air { color: #7FA6DB; }
+.dbg-showpos-legend .is-air::before { border-top-width: 3px; border-top-color: var(--ct-blue); }

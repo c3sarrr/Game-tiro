@@ -1,0 +1,80 @@
+// Testes dos dados de movimento (Fases 3.1 e 3.2): sv_* do CS:GO, faixas do console, constantes do movimento tático e
+// materiais de superfície.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { HULL, SV_DEFAULTS, SV_VARS, CONTROLLER, DUCK, MOVE, STEPS, VIEW } from '../src/data/movement.js';
+import { SURFACES, SURFACE_INDEX, surfaceIndex } from '../src/data/surfaces.js';
+import { createSvVars, setSvVar, resetSvVars } from '../src/player/movementVars.js';
+
+test('movimento: pulo do CS:GO chega a 57 u e as medidas da cápsula são coerentes', () => {
+  const apex = SV_DEFAULTS.jump_impulse ** 2 / (2 * SV_DEFAULTS.gravity);
+  assert.ok(Math.abs(apex - 57) < 1e-3, `ápice ${apex}`);
+  assert.ok(HULL.duckHeight < HULL.standHeight);
+  assert.ok(HULL.duckEye < HULL.standEye && HULL.standEye < HULL.standHeight && HULL.duckEye < HULL.duckHeight);
+  assert.ok(HULL.footRadius > 0 && HULL.footRadius <= HULL.radius);
+  assert.equal(HULL.airDuckLift * 2, HULL.standHeight - HULL.duckHeight);
+  assert.ok(CONTROLLER.walkableNormalY > 0 && CONTROLLER.walkableNormalY < 1);
+  assert.ok(CONTROLLER.skin > 0 && CONTROLLER.skin < 0.1);
+  assert.ok(DUCK.speedMultiplier > 0 && DUCK.speedMultiplier < 1 && DUCK.speed > 0);
+  assert.ok(VIEW.smoothTime > 0 && VIEW.smoothMax >= SV_DEFAULTS.stepsize);
+});
+
+test('sv_*: toda variável tem faixa no console e o padrão cabe nela', () => {
+  assert.deepEqual(SV_VARS.map((v) => v.key).sort(), Object.keys(SV_DEFAULTS).sort());
+  for (const v of SV_VARS) {
+    assert.ok(v.min <= SV_DEFAULTS[v.key] && SV_DEFAULTS[v.key] <= v.max, v.key);
+    assert.ok(v.help.length > 3, v.key);
+  }
+});
+
+test('sv_*: troca limitada à faixa, rejeita lixo e volta ao CS:GO', () => {
+  const vars = createSvVars();
+  assert.equal(setSvVar(vars, 'gravity', '600'), 600);
+  assert.equal(vars.gravity, 600);
+  assert.equal(setSvVar(vars, 'stepsize', 999), 64);
+  assert.equal(setSvVar(vars, 'friction', '4,5'), 4.5);
+  assert.throws(() => setSvVar(vars, 'gravidade', 1), /desconhecida/);
+  assert.throws(() => setSvVar(vars, 'gravity', 'abc'), /inválido/);
+  resetSvVars(vars);
+  assert.deepEqual(vars, { ...SV_DEFAULTS });
+});
+
+test('superfícies: ids únicos, índice e erro para id desconhecido', () => {
+  const ids = SURFACES.map((s) => s.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(SURFACES.length < 256, 'o índice precisa caber em Uint8');
+  ids.forEach((id, i) => assert.equal(SURFACE_INDEX[id], i));
+  assert.equal(surfaceIndex('massinha'), SURFACE_INDEX.massinha);
+  assert.equal(surfaceIndex(3), 3);
+  assert.ok(SURFACES[SURFACE_INDEX.massinha].imprint);
+  for (const s of SURFACES) {
+    assert.ok(s.friction > 0 && s.jumpFactor > 0, s.id);
+    assert.ok(s.stepSlow > 0 && s.stepSlow < s.stepFast && s.stepFast <= 1, s.id);
+  }
+  assert.throws(() => surfaceIndex('lava'), /desconhecida/);
+  assert.throws(() => surfaceIndex(999), /desconhecida/);
+});
+
+test('movimento tático (3.2): constantes do CS:GO coerentes entre si', () => {
+  assert.equal(MOVE.runSpeed, 260);
+  assert.ok(MOVE.walkModifier > 0 && MOVE.walkModifier < 1);
+  // Andar a 0,52 da faca (250) dá 130 u/s, abaixo do limiar dos passos audíveis (135,2): Shift é silencioso.
+  assert.ok(250 * MOVE.walkModifier < STEPS.audibleSpeed);
+  assert.ok(MOVE.bunnyJumpFactor > 1);
+  assert.ok(DUCK.downFactor > 0 && DUCK.downFactor < 1);
+  assert.ok(DUCK.minEnabled < DUCK.speed && DUCK.spamPenalty > 0);
+  assert.ok(DUCK.flagClear > 0 && DUCK.flagClear < 1);
+  assert.ok(DUCK.recoveryAway > DUCK.recovery);
+  assert.ok(STEPS.walkSpeed < STEPS.runSpeed && STEPS.duckWalkSpeed < STEPS.duckRunSpeed);
+  assert.ok(STEPS.fastInterval < STEPS.slowInterval && STEPS.frequency > 0 && STEPS.frequency <= 1);
+  assert.ok(STEPS.landAudibleSpeed < STEPS.roughLandSpeed);
+  assert.ok(SV_DEFAULTS.staminamax <= SV_VARS.find((v) => v.key === 'staminamax').max);
+});
+
+test('sv_*: variáveis liga/desliga do console são inteiras', () => {
+  const vars = createSvVars();
+  assert.equal(setSvVar(vars, 'enablebunnyhopping', '0,7'), 1);
+  assert.equal(setSvVar(vars, 'autobunnyhopping', 5), 1);
+  assert.equal(setSvVar(vars, 'accelerate_use_weapon_speed', 0.2), 0);
+  assert.equal(setSvVar(vars, 'timebetweenducks', '0,25'), 0.25);
+});

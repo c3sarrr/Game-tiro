@@ -7,9 +7,11 @@
 //   rangeModifier: fração do dano mantida a cada 500 u (queda por distância, modelo CS)
 //   range: alcance máximo do hitscan (u)            penetration: poder de atravessar materiais (wallbang)
 //   modes: modos de disparo ('auto' | 'semi' | 'burst')   burst: {count, rpm} quando houver rajada
-//   scope: níveis de zoom (multiplicador de FOV)    silencer: 'removable' quando tem silenciador removível
+//   scope: FOV de cada nível de zoom (graus, na referência de 90° do CS)
+//   zoomTime: duração da transição do FOV para cada nível (s; o índice 0 é sair do zoom)
+//   silencer: 'removable' quando tem silenciador removível
 //   helmetBypass: ignora capacete (AWP)             heavyArmorPen: penetração alta que atravessa capacete
-// Recoil, spread e padrões de spray entram na Fase 4 (src/data/sprayPatterns.js e src/data/inaccuracy.js).
+// Inaccuracy (Fase 3.2) em src/data/inaccuracy.js; recoil, spread e padrões de spray entram na Fase 4.
 
 const W = (o) => Object.freeze(o);
 
@@ -114,38 +116,38 @@ export const WEAPONS = Object.freeze({
     id: 'aug', name: 'AUG', slot: 'primary', category: 'Rifle (mira)', price: 3300,
     damage: 28, armorPen: 0.9, rpm: 666, mag: 30, reserve: 90, killReward: 300,
     moveSpeed: 220, scopedSpeed: 150, team: 'ct', rangeModifier: 0.98, range: 8192, penetration: 2, modes: ['auto'],
-    scope: [0.55],
+    scope: [45], zoomTime: [0.06, 0.1],
   }),
   sg553: W({
     id: 'sg553', name: 'SG 553', slot: 'primary', category: 'Rifle (mira)', price: 3000,
     damage: 30, armorPen: 1, rpm: 545, mag: 30, reserve: 90, killReward: 300,
     moveSpeed: 210, scopedSpeed: 150, team: 'tr', rangeModifier: 0.98, range: 8192, penetration: 2, modes: ['auto'],
-    scope: [0.55], heavyArmorPen: true,
+    scope: [45], zoomTime: [0.06, 0.1], heavyArmorPen: true,
   }),
 
   ssg08: W({
     id: 'ssg08', name: 'SSG 08 (Scout)', slot: 'primary', category: 'Sniper', price: 1700,
     damage: 88, armorPen: 0.85, rpm: 48, mag: 10, reserve: 90, killReward: 300,
     moveSpeed: 230, scopedSpeed: 230, team: null, rangeModifier: 0.98, range: 8192, penetration: 2.5, modes: ['semi'],
-    scope: [0.4, 0.15],
+    scope: [40, 15], zoomTime: [0.05, 0.05, 0.05],
   }),
   awp: W({
     id: 'awp', name: 'AWP', slot: 'primary', category: 'Sniper', price: 4750,
     damage: 115, armorPen: 0.975, rpm: 41, mag: 5, reserve: 30, killReward: 100,
     moveSpeed: 200, scopedSpeed: 100, team: null, rangeModifier: 0.99, range: 8192, penetration: 2.5, modes: ['semi'],
-    scope: [0.4, 0.1], helmetBypass: true, heavyArmorPen: true,
+    scope: [40, 10], zoomTime: [0.05, 0.05, 0.05], helmetBypass: true, heavyArmorPen: true,
   }),
   scar20: W({
     id: 'scar20', name: 'SCAR-20', slot: 'primary', category: 'Sniper auto', price: 5000,
     damage: 80, armorPen: 0.825, rpm: 240, mag: 20, reserve: 90, killReward: 300,
     moveSpeed: 215, scopedSpeed: 120, team: 'ct', rangeModifier: 0.98, range: 8192, penetration: 2.5, modes: ['semi'],
-    scope: [0.4, 0.15],
+    scope: [40, 15], zoomTime: [0.05, 0.05, 0.05],
   }),
   g3sg1: W({
     id: 'g3sg1', name: 'G3SG1', slot: 'primary', category: 'Sniper auto', price: 5000,
     damage: 80, armorPen: 0.825, rpm: 240, mag: 20, reserve: 90, killReward: 300,
     moveSpeed: 215, scopedSpeed: 120, team: 'tr', rangeModifier: 0.98, range: 8192, penetration: 2.5, modes: ['semi'],
-    scope: [0.4, 0.15],
+    scope: [40, 15], zoomTime: [0.05, 0.05, 0.05],
   }),
 
   negev: W({
@@ -159,6 +161,15 @@ export const WEAPONS = Object.freeze({
     moveSpeed: 195, team: null, rangeModifier: 0.97, range: 8192, penetration: 2, modes: ['auto'],
   }),
 });
+
+/** Luneta (CS:GO): FOV de referência dos níveis de zoom e espera entre dois cliques do botão de mirar. */
+export const SCOPE = Object.freeze({ referenceFov: 90, cycleCooldown: 0.3 });
+
+/** A bomba (C4) na mão: nome, velocidade e time (o objetivo da bomba é da Fase 8). */
+export const BOMB = Object.freeze({ id: 'c4', name: 'Bomba', moveSpeed: 250, team: 'tr' });
+
+/** Nomes aceitos no console para a bomba (`give bomba`). */
+export const BOMB_ALIASES = Object.freeze(['c4', 'bomb', 'bomba']);
 
 /** Apelidos aceitos no console (`give ak`, `give usp`, `give scout`...). */
 export const WEAPON_ALIASES = Object.freeze({
