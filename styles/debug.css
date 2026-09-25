@@ -1,0 +1,109 @@
+/* Ferramentas de desenvolvimento: overlay de desempenho (F3), console (` / F1) e guias de toque. */
+
+.dbg-overlay {
+  position: absolute;
+  top: calc(8px + var(--safe-t));
+  left: calc(8px + var(--safe-l));
+  z-index: 60;
+  display: grid;
+  gap: 4px;
+  max-width: min(760px, 96vw);
+  pointer-events: none !important;
+}
+
+.dbg-text {
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: rgb(42 35 32 / 0.78);
+  color: var(--paper);
+  font: 600 11.5px/1.45 var(--font-mono);
+  white-space: pre-wrap;
+  text-shadow: 0 1px 0 #000;
+  font-variant-numeric: tabular-nums;
+}
+
+.dbg-overlay[data-mode='compacto'] .dbg-text {
+  font-size: 12.5px;
+  color: var(--clay-yellow);
+}
+
+.dbg-graph {
+  width: 180px;
+  height: 46px;
+  border-radius: 4px;
+  image-rendering: pixelated;
+}
+
+.console {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 70;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  height: min(46vh, 460px);
+  padding: calc(8px + var(--safe-t)) calc(14px + var(--safe-r)) 10px calc(14px + var(--safe-l));
+  color: var(--ink);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 21px, rgb(47 109 181 / 0.14) 21px 22px),
+    linear-gradient(180deg, #fbf6ec, var(--paper));
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.55);
+  border-bottom: 3px solid var(--ink);
+  animation: console-in 0.18s var(--ease-out) both;
+}
+
+@keyframes console-in {
+  from { transform: translateY(-40%); opacity: 0; }
+}
+
+.console-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.console-tip { font: 700 0.75rem var(--font-ui); color: var(--ink-soft); }
+
+.console-log {
+  overflow: auto;
+  padding-right: 6px;
+  font: 600 12.5px/22px var(--font-mono);
+  user-select: text;
+  -webkit-user-select: text;
+  overscroll-behavior: contain;
+}
+
+.console-row { white-space: pre-wrap; word-break: break-word; }
+.console-row.is-cmd { color: var(--ct-blue); font-weight: 800; }
+.console-row.is-warn { color: #b3541e; }
+.console-row.is-error { color: var(--tr-red); font-weight: 800; }
+.console-row.is-hint { color: var(--ink-soft); }
+
+.console-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgb(42 35 32 / 0.08);
+}
+
+.console-prompt { font: 800 16px var(--font-mono); color: var(--alert); }
+
+.console-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: 700 14px var(--font-mono);
+}
+
+.console-hint { min-height: 18px; margin-top: 4px; font: 600 11.5px var(--font-mono); color: var(--ink-soft); }
+
+.touch-guides {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}

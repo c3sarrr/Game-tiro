@@ -1,0 +1,112 @@
+/* Base: tela cheia, sem rolagem/zoom acidental no celular, camadas (canvas → toque → UI → debug). */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--studio-dark);
+  color: var(--paper);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--studio-dark);
+}
+
+#view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+#touch-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  touch-action: none;
+}
+
+#touch-layer.is-active {
+  pointer-events: auto;
+}
+
+#ui,
+#debug {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#ui > *,
+#debug > * {
+  pointer-events: auto;
+}
+
+#ui > .toasts,
+#ui > .hud,
+#ui > .loading {
+  pointer-events: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Navegação por controle/setas (focusNav marca .nav-keys): o foco movido por script precisa aparecer. */
+.nav-keys :focus {
+  outline: 3px dashed var(--clay-yellow) !important;
+  outline-offset: 4px;
+}
+
+input[type='text'] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+noscript {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 700 1.2rem var(--font-ui);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

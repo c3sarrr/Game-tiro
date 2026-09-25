@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#2A2320">
+  <meta name="description" content="MASSACRE — FPS multiplayer de navegador feito de massinha, num set de stop-motion.">
+  <title>MASSACRE</title>
+
+  <!-- Fontes base (seção 0.4 regra 4): títulos arredondados e texto limpo. Letreiros decorativos são geometria. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;600;700;800&display=swap">
+
+  <link rel="stylesheet" href="./styles/tokens.css">
+  <link rel="stylesheet" href="./styles/base.css">
+  <link rel="stylesheet" href="./styles/ui.css">
+  <link rel="stylesheet" href="./styles/settings.css">
+  <link rel="stylesheet" href="./styles/hud.css">
+  <link rel="stylesheet" href="./styles/debug.css">
+  <link rel="stylesheet" href="./styles/showcase.css">
+
+  <!-- Bibliotecas servidas localmente em versões fixas (vendor/VERSIONS.json). Sem CDN em runtime. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/build/three.module.js",
+      "three/addons/": "./vendor/three/examples/jsm/",
+      "three-mesh-bvh": "./vendor/three-mesh-bvh/index.module.js",
+      "peerjs": "./vendor/peerjs/peerjs.esm.js"
+    }
+  }
+  </script>
+  <link rel="modulepreload" href="./vendor/three/build/three.core.js">
+  <link rel="modulepreload" href="./vendor/three/build/three.module.js">
+  <script type="module" src="./src/main.js"></script>
+</head>
+<body>
+  <div id="app">
+    <canvas id="view" tabindex="-1" aria-label="Visão do jogo"></canvas>
+    <div id="touch-layer" aria-hidden="true"></div>
+    <div id="ui"></div>
+    <div id="debug"></div>
+  </div>
+  <noscript>O MASSACRE precisa de JavaScript ativado.</noscript>
+</body>
+</html>

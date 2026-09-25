@@ -1,0 +1,60 @@
+/* Tokens de design do MASSACRE — paleta base da seção 0.13 + derivados do moodboard (docs/art/moodboard.md). */
+:root {
+  color-scheme: dark;
+
+  /* Massa Crua (TR) */
+  --tr-terracotta: #C8553D;
+  --tr-orange: #F28F3B;
+  --tr-red: #D1362F;
+  /* Tropa do Estúdio (CT) */
+  --ct-blue: #2F6DB5;
+  --ct-teal: #3FB8AF;
+  --ct-white: #F4EDE1;
+  /* Set */
+  --set-cardboard: #B98B5E;
+  --set-mat: #2E6E4E;
+  --set-wood: #8C5A3C;
+  --set-tape: #E8D9A8;
+  --set-metal: #8F959C;
+  /* UI */
+  --paper: #F6F0E4;
+  --ink: #2A2320;
+  --clay-yellow: #FFD23F;
+  --alert: #E4572E;
+  /* Luz (moodboard: CSD6, SMD3, SSD5) */
+  --light-key: #FFB46B;
+  --light-fill: #8FB4FF;
+  --night-violet: #4B3F8C;
+
+  /* Derivados */
+  --ink-soft: rgb(42 35 32 / 0.72);
+  --ink-faint: rgb(42 35 32 / 0.16);
+  --studio-dark: #15100e;
+  --paper-shadow: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 22px 44px rgb(0 0 0 / 0.5), 0 3px 8px rgb(0 0 0 / 0.35);
+  --clay-shadow:
+    inset 0 -5px 0 rgb(0 0 0 / 0.18),
+    inset 0 3px 1px rgb(255 255 255 / 0.3),
+    0 4px 0 rgb(0 0 0 / 0.26),
+    0 9px 18px rgb(0 0 0 / 0.32);
+  --clay-shadow-pressed:
+    inset 0 -2px 0 rgb(0 0 0 / 0.2),
+    inset 0 2px 1px rgb(255 255 255 / 0.25),
+    0 1px 0 rgb(0 0 0 / 0.3),
+    0 3px 8px rgb(0 0 0 / 0.3);
+  /* Canto irregular de massa moldada à mão */
+  --blob: 22px 16px 26px 14px / 16px 24px 15px 22px;
+  --blob-2: 16px 26px 14px 24px / 22px 14px 24px 16px;
+
+  --font-title: 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif;
+  --font-ui: 'Nunito', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, 'SF Mono', 'Courier New', monospace;
+
+  --ease-squash: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --pose: 83.333ms; /* uma pose de stop-motion: 1/12 s */
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}
